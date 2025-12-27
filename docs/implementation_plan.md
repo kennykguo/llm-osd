@@ -66,9 +66,12 @@ supported actions (mvp):
 
 ### results
 
-for each action, return:
+response-level fields:
 
 - `executed`: boolean (false for `plan_only`, true for `execute`)
+
+for each action, return:
+
 - `ok`: boolean
 - `stdout` / `stderr`: strings (with explicit truncation marker if truncated)
 - `stdout_truncated` / `stderr_truncated`: booleans
