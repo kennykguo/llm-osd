@@ -27,6 +27,14 @@ cargo run -p llmsh -- ping --socket-path /tmp/llm-osd.sock --session-id sess-1
 the response is json and includes `request_id`, `results`, and optional `error`.
 the response also includes `executed` so callers can distinguish `plan_only` from `execute`.
 
+## service_control (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-svc-1","version":"0.1","mode":"plan_only","actions":[{"type":"service_control","action":"status","unit":"ssh.service","reason":"inspect service status","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
 ## send a plan from stdin
 
 ```bash

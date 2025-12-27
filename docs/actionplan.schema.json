@@ -192,6 +192,44 @@
         {
           "type": "object",
           "required": [
+            "action",
+            "reason",
+            "type",
+            "unit"
+          ],
+          "properties": {
+            "action": {
+              "$ref": "#/definitions/ServiceControlVerb"
+            },
+            "danger": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "service_control"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "type"
           ],
           "properties": {
@@ -222,6 +260,17 @@
       "enum": [
         "plan_only",
         "execute"
+      ]
+    },
+    "ServiceControlVerb": {
+      "type": "string",
+      "enum": [
+        "start",
+        "stop",
+        "restart",
+        "enable",
+        "disable",
+        "status"
       ]
     }
   }

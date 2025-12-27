@@ -55,7 +55,29 @@ pub enum Action {
     Exec(ExecAction),
     ReadFile(ReadFileAction),
     WriteFile(WriteFileAction),
+    ServiceControl(ServiceControlAction),
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceControlVerb {
+    Start,
+    Stop,
+    Restart,
+    Enable,
+    Disable,
+    Status,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceControlAction {
+    pub action: ServiceControlVerb,
+    pub unit: String,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -125,7 +147,16 @@ pub enum ActionResult {
     Exec(ExecResult),
     ReadFile(ReadFileResult),
     WriteFile(WriteFileResult),
+    ServiceControl(ServiceControlResult),
     Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceControlResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -184,6 +215,7 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_VERSION_BYTES: usize = 128;
     const MAX_MODE_BYTES: usize = 128;
     const MAX_EXEC_TIMEOUT_SEC: u64 = 60;
+    const MAX_SYSTEMD_UNIT_BYTES: usize = 256;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -439,6 +471,28 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
 
                 if write.danger.is_some() {
                     require_confirmation(plan, "write_file requires confirmation when danger is set")?;
+                }
+            }
+            Action::ServiceControl(svc) => {
+                if svc.unit.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "service_control.unit must be non-empty".to_string(),
+                    });
+                }
+                if svc.unit.as_bytes().len() > MAX_SYSTEMD_UNIT_BYTES {
+                    return Err(ValidationError {
+                        message: "service_control.unit is too long".to_string(),
+                    });
+                }
+                if svc.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "service_control.reason must be non-empty".to_string(),
+                    });
+                }
+                if svc.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "service_control.reason is too long".to_string(),
+                    });
                 }
             }
             Action::Ping => {}
