@@ -53,7 +53,10 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
         results.push(result);
     }
 
-    let response = ActionPlanResult { results };
+    let response = ActionPlanResult {
+        request_id: plan.request_id.clone(),
+        results,
+    };
     let response_json = serde_json::to_vec(&response)?;
     stream.write_all(&response_json).await?;
     stream.shutdown().await?;
@@ -75,7 +78,9 @@ async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> Ac
                     ok: false,
                     exit_code: None,
                     stdout: "".to_string(),
+                    stdout_truncated: false,
                     stderr: "".to_string(),
+                    stderr_truncated: false,
                     error: Some("exec denied by policy".to_string()),
                 });
             }
@@ -84,7 +89,9 @@ async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> Ac
                     ok: false,
                     exit_code: None,
                     stdout: "".to_string(),
+                    stdout_truncated: false,
                     stderr: "".to_string(),
+                    stderr_truncated: false,
                     error: Some(format!(
                         "confirmation required (token: {})",
                         policy::confirmation_token_hint()
@@ -122,6 +129,7 @@ mod tests {
 
         let mut stream = UnixStream::connect(&socket_path).await.unwrap();
         let plan = r#"{
+          "request_id":"req-echo-1",
           "version":"0.1",
           "mode":"execute",
           "actions":[{"type":"exec","argv":["/bin/echo","hi"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}]
@@ -134,6 +142,7 @@ mod tests {
     stream.read_to_end(&mut out).await.unwrap();
         let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
         assert_eq!(response.results.len(), 1);
+        assert_eq!(response.request_id, "req-echo-1");
 
         match &response.results[0] {
             ActionResult::Exec(exec) => {
@@ -168,6 +177,7 @@ mod tests {
 
         let plan_without = format!(
             r#"{{
+              "request_id":"req-rm-1",
               "version":"0.1",
               "mode":"execute",
               "actions":[{{"type":"exec","argv":["/bin/rm","{}"],"cwd":"{}","env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}]
@@ -193,6 +203,7 @@ mod tests {
 
         let plan_with = format!(
             r#"{{
+              "request_id":"req-rm-2",
               "version":"0.1",
               "mode":"execute",
               "actions":[{{"type":"exec","argv":["/bin/rm","{}"],"cwd":"{}","env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}],

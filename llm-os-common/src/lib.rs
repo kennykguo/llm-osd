@@ -13,6 +13,8 @@ pub enum Mode {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ActionPlan {
+    pub request_id: String,
+    pub session_id: Option<String>,
     pub version: String,
     pub mode: Mode,
     pub actions: Vec<Action>,
@@ -74,6 +76,7 @@ pub fn parse_action_plan(input: &str) -> Result<ActionPlan, serde_json::Error> {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ActionPlanResult {
+    pub request_id: String,
     pub results: Vec<ActionResult>,
 }
 
@@ -91,7 +94,9 @@ pub struct ExecResult {
     pub ok: bool,
     pub exit_code: Option<i32>,
     pub stdout: String,
+    pub stdout_truncated: bool,
     pub stderr: String,
+    pub stderr_truncated: bool,
     pub error: Option<String>,
 }
 
@@ -118,6 +123,20 @@ pub struct ValidationError {
 }
 
 pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
+    if plan.request_id.trim().is_empty() {
+        return Err(ValidationError {
+            message: "request_id must be non-empty".to_string(),
+        });
+    }
+
+    if let Some(session_id) = &plan.session_id {
+        if session_id.trim().is_empty() {
+            return Err(ValidationError {
+                message: "session_id must be non-empty when provided".to_string(),
+            });
+        }
+    }
+
     if plan.version.trim().is_empty() {
         return Err(ValidationError {
             message: "version must be non-empty".to_string(),
@@ -241,6 +260,8 @@ mod tests {
     #[test]
     fn validate_rejects_empty_exec_argv() {
         let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
             version: "0.1".to_string(),
             mode: Mode::Execute,
             actions: vec![Action::Exec(ExecAction {
@@ -263,6 +284,8 @@ mod tests {
     #[test]
     fn validate_requires_confirmation_when_danger_is_set() {
         let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
             version: "0.1".to_string(),
             mode: Mode::Execute,
             actions: vec![Action::Exec(ExecAction {

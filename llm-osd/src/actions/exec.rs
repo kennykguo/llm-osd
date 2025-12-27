@@ -14,7 +14,9 @@ pub async fn run(exec: &ExecAction) -> ActionResult {
                 ok: false,
                 exit_code: None,
                 stdout: "".to_string(),
+                stdout_truncated: false,
                 stderr: "".to_string(),
+                stderr_truncated: false,
                 error: Some("missing argv[0]".to_string()),
             })
         }
@@ -39,7 +41,9 @@ pub async fn run(exec: &ExecAction) -> ActionResult {
                 ok: false,
                 exit_code: None,
                 stdout: "".to_string(),
+                stdout_truncated: false,
                 stderr: "".to_string(),
+                stderr_truncated: false,
                 error: Some(format!("exec failed: {err}")),
             })
         }
@@ -48,20 +52,24 @@ pub async fn run(exec: &ExecAction) -> ActionResult {
                 ok: false,
                 exit_code: None,
                 stdout: "".to_string(),
+                stdout_truncated: false,
                 stderr: "".to_string(),
+                stderr_truncated: false,
                 error: Some("exec timed out".to_string()),
             })
         }
     };
 
-    let (stdout, _stdout_truncated) = truncate_bytes(&output.stdout);
-    let (stderr, _stderr_truncated) = truncate_bytes(&output.stderr);
+    let (stdout, stdout_truncated) = truncate_bytes(&output.stdout);
+    let (stderr, stderr_truncated) = truncate_bytes(&output.stderr);
 
     ActionResult::Exec(ExecResult {
         ok: output.status.success(),
         exit_code: output.status.code(),
         stdout,
         stderr,
+        stdout_truncated,
+        stderr_truncated,
         error: None,
     })
 }

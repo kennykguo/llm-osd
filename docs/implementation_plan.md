@@ -41,6 +41,7 @@ for each action, return:
 
 - `ok`: boolean
 - `stdout` / `stderr`: strings (with explicit truncation marker if truncated)
+- `stdout_truncated` / `stderr_truncated`: booleans
 - `exit_code`: for exec
 - `artifacts`: paths created/modified (when applicable)
 - `error`: structured error info when `ok=false`
@@ -49,6 +50,7 @@ for each action, return:
 
 every request/action is logged with:
 
+- request id (from client)
 - session id (from client)
 - timestamp
 - reason strings

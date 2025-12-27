@@ -16,6 +16,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 - wip branch created and snapshotted: `wip/2025-12-27-mvp`
 - added `llm-os-common` shared protocol crate with strict parsing (`deny_unknown_fields`) and a failing test proving hallucination rejection
 - added explicit confirmation token support in the actionplan schema and daemon-side enforcement for policy-sensitive exec (mvp: rm)
+- added required `request_id` to action plans and echoed it in daemon responses for deterministic correlation
 
 ## next steps
 
@@ -32,5 +33,8 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 
 - add a confirmation milestone:
   - daemon blocks policy-sensitive actions unless `confirmation.token` matches the expected value
+
+- add request correlation:
+  - require `request_id` on every request and include it in every response and audit record
 
 
