@@ -85,6 +85,7 @@ notes:
 
 - absolute paths outside `/tmp/` require a confirmation token.
 - paths containing `..` require a confirmation token.
+- `content` is capped by validation (mvp: 65536 bytes).
 
 ## audit log
 

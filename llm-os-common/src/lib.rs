@@ -169,6 +169,7 @@ pub struct ValidationError {
 
 pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_READ_FILE_BYTES: u64 = 64 * 1024;
+    const MAX_WRITE_FILE_BYTES: usize = 64 * 1024;
 
     if plan.request_id.trim().is_empty() {
         return Err(ValidationError {
@@ -255,6 +256,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if write.path.trim().is_empty() {
                     return Err(ValidationError {
                         message: "write_file.path must be non-empty".to_string(),
+                    });
+                }
+                if write.content.as_bytes().len() > MAX_WRITE_FILE_BYTES {
+                    return Err(ValidationError {
+                        message: "write_file.content is too large".to_string(),
                     });
                 }
                 if write.mode.trim().is_empty() {
@@ -416,6 +422,29 @@ mod tests {
 
         let err = validate_action_plan(&plan).unwrap_err();
         assert_eq!(err.message, "read_file.max_bytes is too large");
+    }
+
+    #[test]
+    fn validate_rejects_write_file_content_too_large() {
+        let big = "a".repeat(128 * 1024);
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::WriteFile(WriteFileAction {
+                path: "./out.txt".to_string(),
+                content: big,
+                mode: "0644".to_string(),
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "write_file.content is too large");
     }
 }
 

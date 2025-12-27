@@ -70,6 +70,10 @@ read_file semantics:
 - `truncated=true` means the file had more than `max_bytes` bytes
 - `max_bytes` is capped by validation (mvp: 65536)
 
+write_file semantics:
+
+- `content` is capped by validation (mvp: 65536 bytes)
+
 ### auditing
 
 every request/action is logged with:
