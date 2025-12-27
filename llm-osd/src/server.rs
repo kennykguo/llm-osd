@@ -5,7 +5,10 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
-use llm_os_common::{parse_action_plan, validate_action_plan, Action, ActionPlanResult, ActionResult, Mode};
+use llm_os_common::{
+    parse_action_plan, validate_action_plan, Action, ActionPlanResult, ActionResult, ErrorCode,
+    Mode, RequestError,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -55,7 +58,13 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
     }
 
     if exceeded {
-        let _ = write_request_error(&mut stream, "unknown", "request exceeds max bytes").await;
+        let _ = write_request_error(
+            &mut stream,
+            "unknown",
+            ErrorCode::RequestTooLarge,
+            "request exceeds max bytes",
+        )
+        .await;
         return Ok(());
     }
 
@@ -63,7 +72,13 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
     let plan = match parse_action_plan(&input_str) {
         Ok(p) => p,
         Err(err) => {
-            let _ = write_request_error(&mut stream, "unknown", &format!("parse failed: {err}")).await;
+            let _ = write_request_error(
+                &mut stream,
+                "unknown",
+                ErrorCode::ParseFailed,
+                &format!("parse failed: {err}"),
+            )
+            .await;
             return Ok(());
         }
     };
@@ -72,6 +87,7 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
         let _ = write_request_error(
             &mut stream,
             &plan.request_id,
+            ErrorCode::ValidationFailed,
             &format!("validation failed: {}", err.message),
         )
         .await;
@@ -79,7 +95,13 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
     }
 
     if plan.mode != Mode::Execute {
-        let _ = write_request_error(&mut stream, &plan.request_id, "invalid mode").await;
+        let _ = write_request_error(
+            &mut stream,
+            &plan.request_id,
+            ErrorCode::InvalidMode,
+            "invalid mode",
+        )
+        .await;
         return Ok(());
     }
 
@@ -112,12 +134,16 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
 async fn write_request_error(
     stream: &mut UnixStream,
     request_id: &str,
+    code: ErrorCode,
     message: &str,
 ) -> anyhow::Result<()> {
     let response = ActionPlanResult {
         request_id: request_id.to_string(),
         results: vec![],
-        error: Some(message.to_string()),
+        error: Some(RequestError {
+            code,
+            message: message.to_string(),
+        }),
     };
     let response_json = serde_json::to_vec(&response)?;
     stream.write_all(&response_json).await?;
@@ -334,8 +360,11 @@ mod tests {
 
         let mut out = Vec::new();
         stream.read_to_end(&mut out).await.unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
-        assert_eq!(v["error"], "request exceeds max bytes");
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            response.error.as_ref().unwrap().code,
+            llm_os_common::ErrorCode::RequestTooLarge
+        );
 
         server.abort();
     }
@@ -365,7 +394,10 @@ mod tests {
         let mut out = Vec::new();
         stream.read_to_end(&mut out).await.unwrap();
         let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
-        assert!(response.error.as_deref().unwrap_or("").contains("parse failed"));
+        assert_eq!(
+            response.error.as_ref().unwrap().code,
+            llm_os_common::ErrorCode::ParseFailed
+        );
 
         server.abort();
     }
@@ -402,11 +434,10 @@ mod tests {
         let mut out = Vec::new();
         stream.read_to_end(&mut out).await.unwrap();
         let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
-        assert!(response
-            .error
-            .as_deref()
-            .unwrap_or("")
-            .contains("validation failed"));
+        assert_eq!(
+            response.error.as_ref().unwrap().code,
+            llm_os_common::ErrorCode::ValidationFailed
+        );
 
         server.abort();
     }

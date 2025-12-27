@@ -49,6 +49,11 @@ for each action, return:
 - `artifacts`: paths created/modified (when applicable)
 - `error`: structured error info when `ok=false`
 
+request-level failures (parse/validation/mode/size) return:
+
+- `error.code`: deterministic string enum
+- `error.message`: human-readable detail
+
 ### auditing
 
 every request/action is logged with:

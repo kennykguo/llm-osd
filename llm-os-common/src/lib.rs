@@ -5,6 +5,15 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub enum ErrorCode {
+    ParseFailed,
+    ValidationFailed,
+    InvalidMode,
+    RequestTooLarge,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum Mode {
     PlanOnly,
     Execute,
@@ -78,7 +87,14 @@ pub fn parse_action_plan(input: &str) -> Result<ActionPlan, serde_json::Error> {
 pub struct ActionPlanResult {
     pub request_id: String,
     pub results: Vec<ActionResult>,
-    pub error: Option<String>,
+    pub error: Option<RequestError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RequestError {
+    pub code: ErrorCode,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
