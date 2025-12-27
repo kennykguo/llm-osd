@@ -1,0 +1,228 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActionPlan",
+  "type": "object",
+  "required": [
+    "actions",
+    "mode",
+    "request_id",
+    "version"
+  ],
+  "properties": {
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Action"
+      }
+    },
+    "confirmation": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Confirmation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "mode": {
+      "$ref": "#/definitions/Mode"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "Action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "argv",
+            "as_root",
+            "reason",
+            "timeout_sec",
+            "type"
+          ],
+          "properties": {
+            "argv": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "as_root": {
+              "type": "boolean"
+            },
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "danger": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "env": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "timeout_sec": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "exec"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "max_bytes",
+            "path",
+            "reason",
+            "type"
+          ],
+          "properties": {
+            "danger": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "max_bytes": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "path": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "read_file"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "content",
+            "mode",
+            "path",
+            "reason",
+            "type"
+          ],
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "danger": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "mode": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "write_file"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ping"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Confirmation": {
+      "type": "object",
+      "required": [
+        "token"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Mode": {
+      "type": "string",
+      "enum": [
+        "plan_only",
+        "execute"
+      ]
+    }
+  }
+}

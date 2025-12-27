@@ -1,11 +1,25 @@
-# Tasks
+# llm-os mvp running task
 
-- [x] Initialize Project
-    - [x] Initialize git repository <!-- id: 0 -->
-    - [x] Create initial architecture plan (Brainstorm Mode) <!-- id: 1 -->
-- [x] Architecture Review <!-- id: 2 -->
-    - [x] Review architecture plan with user <!-- id: 3 -->
-- [/] MVP Implementation <!-- id: 4 -->
-    - [/] Set up project structure (Rust/Go/Python) <!-- id: 5 -->
-    - [ ] Implement `llm-osd` skeleton <!-- id: 6 -->
-    - [ ] Implement `llmsh` skeleton <!-- id: 7 -->
+## current goal
+
+build a deterministic, auditable interface between a human, an llm, and the os executor such that llm hallucinations cannot directly cause arbitrary execution.
+
+## non-negotiable constraints
+
+- llm output must be schema-valid json for execution.
+- the executor must reject unknown fields and invalid values.
+- every privileged operation must be logged with who/why/what.
+- support clean extension for new os capabilities (e.g. monitor, keyboard, mouse) via a stable action envelope and per-capability modules.
+
+## current status
+
+- wip branch created and snapshotted: `wip/2025-12-27-mvp`
+- added `llm-os-common` shared protocol crate with strict parsing (`deny_unknown_fields`) and a failing test proving hallucination rejection
+- added explicit confirmation token support in the actionplan schema and daemon-side enforcement for policy-sensitive exec (mvp: rm)
+- added required `request_id` to action plans and echoed it in daemon responses for deterministic correlation
+
+## next steps
+
+none right now; mvp core is implemented. see `docs/usage.md` for how to run it.
+
+

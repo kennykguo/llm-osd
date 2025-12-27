@@ -1,99 +1,178 @@
-# Architecture Proposal: llm-os
+# llm-os implementation plan (mvp-first)
 
-## Goal Description
-To design and implement `llm-os`, a system where an LLM acts as a privileged operator for a Linux-based OS, driven by explicit user intent and structured interfaces. The system ensures the LLM is dormant by default, safe, and auditable.
+## mvp definition
 
-## User Review Required
-> [!IMPORTANT]
-> **Architecture Choice**: We are proceeding with the **Linux-based Control Plane** approach. This avoids the complexity of writing a kernel from scratch while providing real OS capabilities.
->
-> **Language Stack**: Proposing **Rust** for the privileged daemon (`llm-osd`) for memory safety and **Rust** for the CLI/TUI (`llmsh`) to share schema definitions.
->
-> **LLM Serving**: Proposing a **Hybrid** approach (Local small model for fast routing/formatting + Remote/On-demand Large model for complex tasks) or **Local On-Demand** via socket activation.
->
-> **Coding Standards**:
-> - **Scalability**: Code structure must support easy extension for new hardware/features (monitor, keyboard, mouse).
-> - **Comments**: All code comments must be in **lowercase format**.
+deliver a minimal `llmsh` + `llm-osd` pair where:
 
-## Proposed Architecture
+- `llmsh` (user cli) sends a schema-valid json action plan to a local unix socket.
+- `llm-osd` (privileged daemon) validates, audits, and executes a small allowlisted subset of actions.
+- unknown fields and invalid values are rejected to harden against llm hallucinations.
+- results are returned as structured json (typed per action).
+- include a `ping` action for deterministic health checks without exec.
 
-### 1. OS Substrate: Linux Control Plane
-We will build on top of a standard Linux distribution (e.g., Ubuntu/Debian or a minimal distro).
-- **Kernel**: Standard Linux Kernel.
-- **Privileged Daemon (`llm-osd`)**:
-    - Runs as `root`.
-    - Listens on a secure Unix socket.
-    - Validates and executes structured actions.
-    - Enforces policy (allowlist, confirmation).
-    - Logs to system audit logs (`journald`).
-- **User Interface (`llmsh`)**:
-    - Runs as `user`.
-    - Accepts user prompts.
-    - Invokes the LLM (local or remote).
-    - Parses LLM output into structured JSON.
-    - Sends JSON plans to `llm-osd` for execution.
+## architecture options (required comparison)
 
-### 2. LLM Serving Strategy
-**Primary Strategy: Local On-Demand (Socket Activated)**
-- **Mechanism**: Use `systemd` socket activation to start the inference server (e.g., `llama.cpp` server) only when `llmsh` connects.
-- **Idle Timeout**: Configure the server to exit after N seconds of inactivity to satisfy "dormant by default".
-- **Fallback**: Option to use remote APIs (OpenAI/Anthropic) for "Brainstorm Mode" or complex planning, configured via user preference.
+| option | summary | risk | complexity | time-to-demo | security posture |
+|---|---|---:|---:|---:|---:|
+| linux control-plane (recommended) | deterministic linux kernel; llm drives a validated privileged daemon | low | low | fast | strong (cgroups/namespaces/audit/systemd) |
+| xv6-in-qemu | toy kernel experimentation + minimal interface | medium | high | medium | weak until built |
+| capability-first os (sel4-like) | research-grade isolation via capabilities | high | very high | slow | excellent but heavy lift |
 
-### 3. Structured Interface Contract
-**Schema**: JSON-based Action Plan.
-**Validation**:
-- **LLM Side**: Use `llguidance` (or grammar constraints) to force valid JSON output.
-- **OS Side**: `llm-osd` strictly validates the JSON schema and checks values against allowlists (e.g., allowed paths, allowed packages).
+recommendation: linux control-plane for mvp, keep xv6 path for kernel experimentation.
 
-**Action Types (MVP)**:
-- `exec`: Run command (allowlisted binaries only initially).
-- `read_file`: Read file content (size limited).
-- `write_file`: Write content (user confirmation required for overwrite).
-- `install_packages`: Wrapper for `apt`/`dnf`.
+## deterministic interface contract
 
-### 4. Privilege Model & Isolation
-- **Executor**: `llm-osd` is the only component with root.
-- **Sandboxing**:
-    - Risky `exec` operations can be run inside `systemd-run` transient units with restricted capabilities or namespaces.
-    - Future: Run `llm-osd` itself in a container or VM if higher isolation is needed.
+### envelope
 
-## MVP Implementation Plan
+an action plan is a single json document:
 
-### Milestone 1: Core Skeleton
-- [ ] **Project Setup**: Rust workspace with `llm-osd` (daemon) and `llmsh` (cli).
-- [ ] **Daemon**: Basic Unix socket listener, simple "echo" action.
-- [ ] **CLI**: Prompt input, send to daemon, print response.
-- [ ] **Schema**: Define `Action` struct shared between crates.
+- `request_id`: required identifier for correlation
+- `session_id`: optional identifier for correlation
+- `version`: protocol version string
+- `mode`: `plan_only` or `execute`
+- `actions`: ordered list of actions
 
-### Milestone 2: Basic Actions & Security
-- [ ] **Actions**: Implement `exec`, `read_file`, `write_file`.
-- [ ] **Policy**: Implement "Confirmation Required" logic in `llm-osd`.
-- [ ] **Logging**: Structured logging to `stdout`/`journald`.
+### hallucination hardening
 
-### Milestone 3: LLM Integration
-- [ ] **Inference**: Integrate with a local `llama.cpp` server or remote API.
-- [ ] **Grammar**: Apply JSON schema constraints to LLM generation.
-- [ ] **End-to-End**: User prompt -> LLM Plan -> JSON -> `llm-osd` Execution.
+- schema parsing uses `deny_unknown_fields` everywhere
+- per-action validators enforce required fields and bounds
+- validator caps number of actions per plan and caps exec argv sizes
+- validator caps exec env sizes
+- validator caps request_id/session_id/reason/path sizes
+- validator caps version/token/danger/recovery/mode sizes
+- validator caps exec.timeout_sec (mvp: 60s)
+- the executor enforces an allowlist and explicit confirmation policies for dangerous actions
+- exec is allowlisted by default; non-allowlisted programs require confirmation
+- exec.as_root is rejected by validation in the mvp
+- daemon uses an idle read timeout so it does not rely on client EOF to complete a request
+- daemon rejects requests larger than 256kiB
+- read_file/write_file for absolute paths outside `/tmp/` require confirmation
+- read_file/write_file paths containing `..` require confirmation
 
-### Milestone 4: System Control
-- [ ] **Package Management**: `install_packages` wrapper.
-- [ ] **Process Control**: Basic `cgroup` or `systemctl` wrappers.
+### results
 
-## Verification Plan
+for each action, return:
 
-### Automated Tests
-- **Unit Tests**: Rust tests for schema serialization/deserialization.
-- **Integration Tests**:
-    - Spin up `llm-osd` in a test harness.
-    - Send mock JSON requests via socket.
-    - Assert on responses and side effects (e.g., file creation).
-    - *Note*: Will need to run some tests as root or use `fakeroot`/namespaces for CI.
+- `executed`: boolean (false for `plan_only`, true for `execute`)
+- `ok`: boolean
+- `stdout` / `stderr`: strings (with explicit truncation marker if truncated)
+- `stdout_truncated` / `stderr_truncated`: booleans
+- `exit_code`: for exec
+- `artifacts`: paths created/modified (when applicable)
+- `error`: structured error info when `ok=false`
 
-### Manual Verification
-- **End-to-End Demo**:
-    1. Start `llm-osd` (sudo).
-    2. Run `llmsh`.
-    3. Type: "Create a file named hello.txt with content 'world'".
-    4. Verify LLM generates correct JSON.
-    5. Verify `llmsh` prompts for confirmation.
-    6. Verify file is created.
+request-level failures (parse/validation/mode/size) return:
+
+- `error.code`: deterministic string enum
+- `error.message`: human-readable detail
+
+per-action failures return:
+
+- `results[].*.error.code`: deterministic string enum
+- `results[].*.error.message`: human-readable detail
+
+read_file semantics:
+
+- daemon reads at most `max_bytes` (plus one extra byte for truncation detection)
+- `truncated=true` means the file had more than `max_bytes` bytes
+- `max_bytes` is capped by validation (mvp: 65536)
+
+write_file semantics:
+
+- `content` is capped by validation (mvp: 65536 bytes)
+
+### auditing
+
+every request/action is logged with:
+
+- request id (from client)
+- session id (from client)
+- unix peer credentials (pid/uid/gid)
+- timestamp
+- reason strings
+- argv/cwd/env diffs
+- before/after when applicable (mvp: limited to what we can capture cheaply)
+
+notes:
+
+- audit redacts confirmation tokens, exec env values, and write_file content
+
+## code structure for extensibility
+
+### `llm-os-common`
+
+shared types:
+
+- request/response structs
+- action enums
+- strict json parse + serialize helpers
+- validation helpers (pure functions)
+
+### `llm-osd`
+
+daemon responsibilities:
+
+- unix socket server + framing
+- request validation + policy
+- action execution modules
+- audit logging
+
+layout (intended):
+
+- `server`: accepts requests and routes actions
+- `policy`: allowlist + confirmation gates
+- `actions/*`: one module per capability (exec, filesystem, services, cgroups, devices, etc.)
+- `audit`: append-only log writer
+
+### `llmsh`
+
+client responsibilities:
+
+- collect user request / llm output
+- send action plan to daemon
+- display structured results
+
+## llm serving strategies (design-level; not required for mvp code)
+
+| strategy | mechanism | “llm dormant” compliance |
+|---|---|---|
+| local on-demand | systemd socket activation or per-request spawn | strong |
+| remote endpoint | https request on demand | local dormant, remote not |
+| hybrid | small local router + remote big model | strong locally |
+
+## mvp milestones
+
+### milestone 1: protocol + strict parsing
+
+exit criteria:
+
+- unknown fields are rejected (tests)
+- request/response types exist in `llm-os-common`
+
+### milestone 2: daemon socket + exec action
+
+exit criteria:
+
+- `llm-osd` listens on unix socket
+- `llmsh` can send an exec request and receive results
+- audit log records requests and results
+
+### milestone 3: file io actions
+
+exit criteria:
+
+- `read_file` bounded by `max_bytes`
+- `write_file` with explicit mode
+
+### milestone 4: policy + confirmation plumbing
+
+exit criteria:
+
+- risk tagging for actions
+- daemon refuses dangerous actions without explicit confirmation token
+
+notes:
+
+- mvp policy also supports requiring confirmation for specific exec programs even if `danger` is unset (example: `rm`)
+
+
