@@ -54,6 +54,7 @@ notes:
 - validator caps number of actions per plan and exec argv sizes
 - validator caps exec env sizes
 - validator caps request_id/session_id/reason/path sizes
+- validator caps version/token/danger/recovery/mode sizes
 
 ## confirmation token
 

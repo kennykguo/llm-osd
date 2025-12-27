@@ -180,6 +180,8 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_SESSION_ID_BYTES: usize = 128;
     const MAX_REASON_BYTES: usize = 2048;
     const MAX_PATH_BYTES: usize = 4096;
+    const MAX_VERSION_BYTES: usize = 128;
+    const MAX_MODE_BYTES: usize = 128;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -211,9 +213,27 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
         }
     }
 
+    if let Some(conf) = &plan.confirmation {
+        if conf.token.trim().is_empty() {
+            return Err(ValidationError {
+                message: "confirmation.token must be non-empty".to_string(),
+            });
+        }
+        if conf.token.as_bytes().len() > 1024 {
+            return Err(ValidationError {
+                message: "confirmation.token is too long".to_string(),
+            });
+        }
+    }
+
     if plan.version.trim().is_empty() {
         return Err(ValidationError {
             message: "version must be non-empty".to_string(),
+        });
+    }
+    if plan.version.as_bytes().len() > MAX_VERSION_BYTES {
+        return Err(ValidationError {
+            message: "version is too long".to_string(),
         });
     }
 
@@ -285,6 +305,20 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "reason is too long".to_string(),
                     });
                 }
+                if let Some(danger) = &exec.danger {
+                    if danger.as_bytes().len() > MAX_REASON_BYTES {
+                        return Err(ValidationError {
+                            message: "danger is too long".to_string(),
+                        });
+                    }
+                }
+                if let Some(recovery) = &exec.recovery {
+                    if recovery.as_bytes().len() > MAX_REASON_BYTES {
+                        return Err(ValidationError {
+                            message: "recovery is too long".to_string(),
+                        });
+                    }
+                }
 
                 if exec.danger.is_some() {
                     require_confirmation(plan, "exec requires confirmation when danger is set")?;
@@ -321,6 +355,20 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "reason is too long".to_string(),
                     });
                 }
+                if let Some(danger) = &read.danger {
+                    if danger.as_bytes().len() > MAX_REASON_BYTES {
+                        return Err(ValidationError {
+                            message: "danger is too long".to_string(),
+                        });
+                    }
+                }
+                if let Some(recovery) = &read.recovery {
+                    if recovery.as_bytes().len() > MAX_REASON_BYTES {
+                        return Err(ValidationError {
+                            message: "recovery is too long".to_string(),
+                        });
+                    }
+                }
 
                 if read.danger.is_some() {
                     require_confirmation(plan, "read_file requires confirmation when danger is set")?;
@@ -347,6 +395,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "write_file.mode must be non-empty".to_string(),
                     });
                 }
+                if write.mode.as_bytes().len() > MAX_MODE_BYTES {
+                    return Err(ValidationError {
+                        message: "write_file.mode is too long".to_string(),
+                    });
+                }
                 if write.reason.trim().is_empty() {
                     return Err(ValidationError {
                         message: "write_file.reason must be non-empty".to_string(),
@@ -356,6 +409,20 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                     return Err(ValidationError {
                         message: "reason is too long".to_string(),
                     });
+                }
+                if let Some(danger) = &write.danger {
+                    if danger.as_bytes().len() > MAX_REASON_BYTES {
+                        return Err(ValidationError {
+                            message: "danger is too long".to_string(),
+                        });
+                    }
+                }
+                if let Some(recovery) = &write.recovery {
+                    if recovery.as_bytes().len() > MAX_REASON_BYTES {
+                        return Err(ValidationError {
+                            message: "recovery is too long".to_string(),
+                        });
+                    }
                 }
 
                 if write.danger.is_some() {
@@ -754,6 +821,107 @@ mod tests {
         };
         let err = validate_action_plan(&plan).unwrap_err();
         assert_eq!(err.message, "path is too long");
+    }
+
+    #[test]
+    fn validate_rejects_version_too_long() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "a".repeat(129),
+            mode: Mode::Execute,
+            actions: vec![Action::Ping],
+            confirmation: None,
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "version is too long");
+    }
+
+    #[test]
+    fn validate_rejects_confirmation_token_too_long() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Ping],
+            confirmation: Some(Confirmation {
+                token: "a".repeat(1025),
+            }),
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "confirmation.token is too long");
+    }
+
+    #[test]
+    fn validate_rejects_danger_too_long() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: Some("a".repeat(2049)),
+                recovery: None,
+            })],
+            confirmation: Some(Confirmation {
+                token: "i-understand".to_string(),
+            }),
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "danger is too long");
+    }
+
+    #[test]
+    fn validate_rejects_recovery_too_long() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: Some("danger".to_string()),
+                recovery: Some("a".repeat(2049)),
+            })],
+            confirmation: Some(Confirmation {
+                token: "i-understand".to_string(),
+            }),
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "recovery is too long");
+    }
+
+    #[test]
+    fn validate_rejects_write_file_mode_too_long() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::WriteFile(WriteFileAction {
+                path: "./out.txt".to_string(),
+                content: "x".to_string(),
+                mode: "a".repeat(129),
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "write_file.mode is too long");
     }
 }
 
