@@ -62,6 +62,11 @@ per-action failures return:
 - `results[].*.error.code`: deterministic string enum
 - `results[].*.error.message`: human-readable detail
 
+read_file semantics:
+
+- daemon reads at most `max_bytes` (plus one extra byte for truncation detection)
+- `truncated=true` means the file had more than `max_bytes` bytes
+
 ### auditing
 
 every request/action is logged with:

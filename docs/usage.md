@@ -68,6 +68,10 @@ echo '{"request_id":"req-read-1","version":"0.1","mode":"execute","actions":[{"t
 
 the daemon returns `content_base64` and `truncated`.
 
+notes:
+
+- the daemon only reads up to `max_bytes` (plus one extra byte to detect truncation), so `read_file` does not load large files into memory.
+
 ## write a file
 
 ```bash
