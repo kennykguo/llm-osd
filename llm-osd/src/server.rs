@@ -13,6 +13,8 @@ use crate::actions;
 use crate::audit;
 use crate::policy;
 
+const MAX_REQUEST_BYTES: usize = 64 * 1024;
+
 pub async fn run(socket_path: &str, audit_path: &str) -> anyhow::Result<()> {
     if Path::new(socket_path).exists() {
         tokio::fs::remove_file(socket_path)
@@ -35,7 +37,27 @@ pub async fn run(socket_path: &str, audit_path: &str) -> anyhow::Result<()> {
 
 async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Result<()> {
     let mut input = Vec::new();
-    stream.read_to_end(&mut input).await?;
+    let mut buf = [0u8; 4096];
+    let mut exceeded = false;
+    loop {
+        let n = stream.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        if exceeded {
+            continue;
+        }
+        if input.len() + n > MAX_REQUEST_BYTES {
+            exceeded = true;
+            continue;
+        }
+        input.extend_from_slice(&buf[..n]);
+    }
+
+    if exceeded {
+        let _ = write_request_error(&mut stream, "unknown", "request exceeds max bytes").await;
+        return Ok(());
+    }
 
     let input_str = String::from_utf8_lossy(&input);
     let plan = parse_action_plan(&input_str)?;
@@ -56,6 +78,7 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
     let response = ActionPlanResult {
         request_id: plan.request_id.clone(),
         results,
+        error: None,
     };
     let response_json = serde_json::to_vec(&response)?;
     stream.write_all(&response_json).await?;
@@ -67,6 +90,22 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
         .as_millis() as u64;
     audit::append_record(audit_path, now_ms, &plan, &response).await?;
 
+    Ok(())
+}
+
+async fn write_request_error(
+    stream: &mut UnixStream,
+    request_id: &str,
+    message: &str,
+) -> anyhow::Result<()> {
+    let response = ActionPlanResult {
+        request_id: request_id.to_string(),
+        results: vec![],
+        error: Some(message.to_string()),
+    };
+    let response_json = serde_json::to_vec(&response)?;
+    stream.write_all(&response_json).await?;
+    let _ = stream.shutdown().await;
     Ok(())
 }
 
@@ -240,6 +279,47 @@ mod tests {
             ActionResult::Exec(exec) => assert!(exec.ok),
             _ => panic!("unexpected action result type"),
         }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_rejects_oversized_request_with_json_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let big = "a".repeat(70 * 1024);
+        let plan = format!(
+            r#"{{
+              "request_id":"req-big-1",
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"exec","argv":["/bin/echo","{}"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}]
+            }}"#,
+            big
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(v["error"], "request exceeds max bytes");
 
         server.abort();
     }

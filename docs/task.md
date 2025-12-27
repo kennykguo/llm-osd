@@ -44,4 +44,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
   - only allowlisted programs run without confirmation (mvp: `/bin/echo`)
   - everything else requires `confirmation.token`
 
+- request size limit:
+  - daemon rejects requests larger than 64kiB with a deterministic json error response
+
 

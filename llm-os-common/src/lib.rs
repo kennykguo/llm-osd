@@ -78,6 +78,7 @@ pub fn parse_action_plan(input: &str) -> Result<ActionPlan, serde_json::Error> {
 pub struct ActionPlanResult {
     pub request_id: String,
     pub results: Vec<ActionResult>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
