@@ -170,6 +170,15 @@ pub struct ValidationError {
 pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_READ_FILE_BYTES: u64 = 64 * 1024;
     const MAX_WRITE_FILE_BYTES: usize = 64 * 1024;
+    const MAX_ACTIONS: usize = 64;
+    const MAX_EXEC_ARGC: usize = 64;
+    const MAX_EXEC_ARG_BYTES: usize = 2048;
+
+    if plan.actions.len() > MAX_ACTIONS {
+        return Err(ValidationError {
+            message: "too many actions".to_string(),
+        });
+    }
 
     if plan.request_id.trim().is_empty() {
         return Err(ValidationError {
@@ -202,6 +211,20 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if exec.as_root {
                     return Err(ValidationError {
                         message: "exec.as_root is not supported".to_string(),
+                    });
+                }
+                if exec.argv.len() > MAX_EXEC_ARGC {
+                    return Err(ValidationError {
+                        message: "exec.argv has too many args".to_string(),
+                    });
+                }
+                if exec
+                    .argv
+                    .iter()
+                    .any(|a| a.as_bytes().len() > MAX_EXEC_ARG_BYTES)
+                {
+                    return Err(ValidationError {
+                        message: "exec.argv arg is too long".to_string(),
                     });
                 }
                 if let Some(cwd) = &exec.cwd {
@@ -445,6 +468,80 @@ mod tests {
 
         let err = validate_action_plan(&plan).unwrap_err();
         assert_eq!(err.message, "write_file.content is too large");
+    }
+
+    #[test]
+    fn validate_rejects_too_many_actions() {
+        let mut actions = Vec::new();
+        for _ in 0..65 {
+            actions.push(Action::Ping);
+        }
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions,
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "too many actions");
+    }
+
+    #[test]
+    fn validate_rejects_exec_too_many_args() {
+        let mut argv = Vec::new();
+        argv.push("/bin/echo".to_string());
+        for _ in 0..64 {
+            argv.push("x".to_string());
+        }
+
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv,
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "exec.argv has too many args");
+    }
+
+    #[test]
+    fn validate_rejects_exec_arg_too_long() {
+        let long = "a".repeat(2049);
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), long],
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "exec.argv arg is too long");
     }
 }
 
