@@ -43,6 +43,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 - exec allowlist:
   - only allowlisted programs run without confirmation (mvp: `/bin/echo`)
   - everything else requires `confirmation.token`
+  - `llm-osd` confirmation token is configurable via `--confirm-token`
 
 - request size limit:
   - daemon rejects requests larger than 64kiB with a deterministic json error response

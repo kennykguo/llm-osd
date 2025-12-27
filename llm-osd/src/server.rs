@@ -18,7 +18,7 @@ use crate::policy;
 
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 
-pub async fn run(socket_path: &str, audit_path: &str) -> anyhow::Result<()> {
+pub async fn run(socket_path: &str, audit_path: &str, confirm_token: &str) -> anyhow::Result<()> {
     if Path::new(socket_path).exists() {
         tokio::fs::remove_file(socket_path)
             .await
@@ -30,15 +30,16 @@ pub async fn run(socket_path: &str, audit_path: &str) -> anyhow::Result<()> {
     loop {
         let (stream, _addr) = listener.accept().await?;
         let audit_path = audit_path.to_string();
+        let confirm_token = confirm_token.to_string();
         tokio::spawn(async move {
-            if let Err(err) = handle_client(stream, &audit_path).await {
+            if let Err(err) = handle_client(stream, &audit_path, &confirm_token).await {
                 let _ = err;
             }
         });
     }
 }
 
-async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Result<()> {
+async fn handle_client(mut stream: UnixStream, audit_path: &str, confirm_token: &str) -> anyhow::Result<()> {
     let mut input = Vec::new();
     let mut buf = [0u8; 4096];
     let mut exceeded = false;
@@ -109,7 +110,7 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
 
     let mut results = Vec::with_capacity(plan.actions.len());
     for action in &plan.actions {
-        let result = execute_action(action, confirmation_token).await;
+        let result = execute_action(action, confirmation_token, confirm_token).await;
         results.push(result);
     }
 
@@ -151,7 +152,11 @@ async fn write_request_error(
     Ok(())
 }
 
-async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> ActionResult {
+async fn execute_action(
+    action: &Action,
+    confirmation_token: Option<&str>,
+    confirm_token: &str,
+) -> ActionResult {
     match action {
         Action::Exec(exec) => {
             if policy::is_exec_denied(exec) {
@@ -168,7 +173,9 @@ async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> Ac
                     }),
                 });
             }
-            if policy::exec_requires_confirmation(exec) && !policy::confirmation_is_valid(confirmation_token) {
+            if policy::exec_requires_confirmation(exec)
+                && !policy::confirmation_is_valid(confirmation_token, confirm_token)
+            {
                 return ActionResult::Exec(llm_os_common::ExecResult {
                     ok: false,
                     exit_code: None,
@@ -180,7 +187,7 @@ async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> Ac
                         code: llm_os_common::ActionErrorCode::ConfirmationRequired,
                         message: format!(
                             "confirmation required (token: {})",
-                            policy::confirmation_token_hint()
+                            policy::confirmation_token_hint(confirm_token)
                         ),
                     }),
                 });
@@ -206,7 +213,7 @@ mod tests {
         let socket_path_str = socket_path.to_string_lossy().to_string();
         let audit_path_str = audit_path.to_string_lossy().to_string();
 
-        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
 
         for _ in 0..50u32 {
             if socket_path.exists() {
@@ -269,7 +276,7 @@ mod tests {
         let socket_path_str = socket_path.to_string_lossy().to_string();
         let audit_path_str = audit_path.to_string_lossy().to_string();
 
-        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
 
         for _ in 0..50u32 {
             if socket_path.exists() {
@@ -313,7 +320,7 @@ mod tests {
         let socket_path_str = socket_path.to_string_lossy().to_string();
         let audit_path_str = audit_path.to_string_lossy().to_string();
 
-        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
 
         for _ in 0..50u32 {
             if socket_path.exists() {
@@ -356,7 +363,7 @@ mod tests {
               "actions":[{{"type":"exec","argv":["/usr/bin/true"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}],
               "confirmation":{{"token":"{}"}}
             }}"#,
-            policy::confirmation_token_hint()
+            policy::confirmation_token_hint("i-understand")
         );
 
         let mut stream = UnixStream::connect(&socket_path).await.unwrap();
@@ -384,7 +391,7 @@ mod tests {
         let socket_path_str = socket_path.to_string_lossy().to_string();
         let audit_path_str = audit_path.to_string_lossy().to_string();
 
-        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
 
         for _ in 0..50u32 {
             if socket_path.exists() {
@@ -428,7 +435,7 @@ mod tests {
         let socket_path_str = socket_path.to_string_lossy().to_string();
         let audit_path_str = audit_path.to_string_lossy().to_string();
 
-        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
 
         for _ in 0..50u32 {
             if socket_path.exists() {
@@ -461,7 +468,7 @@ mod tests {
         let socket_path_str = socket_path.to_string_lossy().to_string();
         let audit_path_str = audit_path.to_string_lossy().to_string();
 
-        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
 
         for _ in 0..50u32 {
             if socket_path.exists() {
@@ -503,7 +510,7 @@ mod tests {
         let socket_path_str = socket_path.to_string_lossy().to_string();
         let audit_path_str = audit_path.to_string_lossy().to_string();
 
-        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
 
         for _ in 0..50u32 {
             if socket_path.exists() {
@@ -551,7 +558,7 @@ mod tests {
             }}"#,
             file_path.file_name().unwrap().to_string_lossy(),
             dir.path().to_string_lossy(),
-            policy::confirmation_token_hint()
+            policy::confirmation_token_hint("i-understand")
         );
 
         let mut stream = UnixStream::connect(&socket_path).await.unwrap();
@@ -567,6 +574,73 @@ mod tests {
         }
 
         assert!(!file_path.exists());
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_exec_non_default_confirmation_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "custom-token").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan_bad = r#"{
+          "request_id":"req-ct-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"exec","argv":["/usr/bin/true"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}],
+          "confirmation":{"token":"i-understand"}
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_bad.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        match &response.results[0] {
+            ActionResult::Exec(exec) => {
+                assert!(!exec.ok);
+                assert_eq!(
+                    exec.error.as_ref().unwrap().code,
+                    llm_os_common::ActionErrorCode::ConfirmationRequired
+                );
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        let plan_good = r#"{
+          "request_id":"req-ct-2",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"exec","argv":["/usr/bin/true"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}],
+          "confirmation":{"token":"custom-token"}
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_good.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        match &response.results[0] {
+            ActionResult::Exec(exec) => assert!(exec.ok),
+            _ => panic!("unexpected action result type"),
+        }
 
         server.abort();
     }

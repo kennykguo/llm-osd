@@ -3,8 +3,6 @@
 
 use llm_os_common::ExecAction;
 
-const CONFIRM_TOKEN: &str = "i-understand";
-
 fn exec_allowed_without_confirmation(program: &str) -> bool {
     match program {
         "/bin/echo" | "echo" => true,
@@ -39,13 +37,13 @@ pub fn exec_requires_confirmation(exec: &ExecAction) -> bool {
     }
 }
 
-pub fn confirmation_is_valid(token: Option<&str>) -> bool {
+pub fn confirmation_is_valid(token: Option<&str>, expected_token: &str) -> bool {
     match token {
-        Some(t) => t.trim() == CONFIRM_TOKEN,
+        Some(t) => t.trim() == expected_token,
         None => false,
     }
 }
 
-pub fn confirmation_token_hint() -> &'static str {
-    CONFIRM_TOKEN
+pub fn confirmation_token_hint(expected_token: &str) -> &str {
+    expected_token
 }

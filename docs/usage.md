@@ -10,6 +10,12 @@ in one terminal:
 cargo run -p llm-osd -- --socket-path /tmp/llm-osd.sock --audit-path ./llm-osd-audit.jsonl
 ```
 
+the confirmation token is configurable:
+
+```bash
+cargo run -p llm-osd -- --socket-path /tmp/llm-osd.sock --audit-path ./llm-osd-audit.jsonl --confirm-token custom-token
+```
+
 ## ping (no exec)
 
 in another terminal:

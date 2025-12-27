@@ -15,10 +15,13 @@ struct Args {
 
     #[arg(long, default_value = "./llm-osd-audit.jsonl")]
     audit_path: String,
+
+    #[arg(long, default_value = "i-understand")]
+    confirm_token: String,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    server::run(&args.socket_path, &args.audit_path).await
+    server::run(&args.socket_path, &args.audit_path, &args.confirm_token).await
 }
