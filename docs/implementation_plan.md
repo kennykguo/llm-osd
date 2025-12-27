@@ -38,6 +38,7 @@ an action plan is a single json document:
 - per-action validators enforce required fields and bounds
 - the executor enforces an allowlist and explicit confirmation policies for dangerous actions
 - exec is allowlisted by default; non-allowlisted programs require confirmation
+- exec.as_root is rejected by validation in the mvp
 
 ### results
 

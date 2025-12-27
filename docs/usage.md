@@ -78,6 +78,7 @@ each record includes top-level `request_id` and optional `session_id`.
 the repo includes a generated json schema for the actionplan protocol:
 
 - `docs/actionplan.schema.json`
+- `docs/error_codes.md` lists deterministic error codes returned by the daemon
 
 to regenerate it from the rust types:
 
