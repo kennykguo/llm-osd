@@ -16,7 +16,7 @@ use crate::actions;
 use crate::audit;
 use crate::policy;
 
-const MAX_REQUEST_BYTES: usize = 64 * 1024;
+const MAX_REQUEST_BYTES: usize = 256 * 1024;
 #[cfg(test)]
 const READ_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(50);
 #[cfg(not(test))]
@@ -487,7 +487,7 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
 
-        let big = "a".repeat(70 * 1024);
+        let big = "a".repeat(300 * 1024);
         let plan = format!(
             r#"{{
               "request_id":"req-big-1",
@@ -509,6 +509,54 @@ mod tests {
             response.error.as_ref().unwrap().code,
             llm_os_common::ErrorCode::RequestTooLarge
         );
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_allows_write_file_near_max_content_under_request_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+        let out_path = dir.path().join("out.txt");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let content = "a".repeat(64 * 1024);
+        let plan = format!(
+            r#"{{
+              "request_id":"req-write-big-1",
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"write_file","path":"{}","content":"{}","mode":"0644","reason":"test","danger":null,"recovery":null}}]
+            }}"#,
+            out_path.to_string_lossy(),
+            content
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert!(response.error.is_none());
+        match &response.results[0] {
+            ActionResult::WriteFile(w) => assert!(w.ok),
+            _ => panic!("unexpected action result type"),
+        }
 
         server.abort();
     }

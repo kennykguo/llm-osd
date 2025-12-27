@@ -56,6 +56,7 @@ notes:
 - validator caps request_id/session_id/reason/path sizes
 - validator caps version/token/danger/recovery/mode sizes
 - validator caps exec.timeout_sec (mvp: 60s)
+- daemon rejects requests larger than 256kiB
 
 ## confirmation token
 
