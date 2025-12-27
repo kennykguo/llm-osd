@@ -51,4 +51,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
   - daemon returns json errors for parse, validation, and mode failures instead of dropping the connection
   - daemon uses request-level error codes for deterministic client branching
 
+- deterministic per-action errors:
+  - action results use typed error codes (policy denied vs confirmation required vs exec failed vs io errors)
+
 

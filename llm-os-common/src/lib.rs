@@ -14,6 +14,18 @@ pub enum ErrorCode {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub enum ActionErrorCode {
+    PolicyDenied,
+    ConfirmationRequired,
+    ExecFailed,
+    ExecTimedOut,
+    ReadFailed,
+    WriteFailed,
+    InvalidModeString,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum Mode {
     PlanOnly,
     Execute,
@@ -98,6 +110,13 @@ pub struct RequestError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ActionError {
+    pub code: ActionErrorCode,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ActionResult {
     Exec(ExecResult),
@@ -114,7 +133,7 @@ pub struct ExecResult {
     pub stdout_truncated: bool,
     pub stderr: String,
     pub stderr_truncated: bool,
-    pub error: Option<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -123,7 +142,7 @@ pub struct ReadFileResult {
     pub ok: bool,
     pub content_base64: Option<String>,
     pub truncated: bool,
-    pub error: Option<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -131,7 +150,7 @@ pub struct ReadFileResult {
 pub struct WriteFileResult {
     pub ok: bool,
     pub artifacts: Vec<String>,
-    pub error: Option<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

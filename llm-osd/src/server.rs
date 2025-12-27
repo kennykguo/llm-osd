@@ -162,7 +162,10 @@ async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> Ac
                     stdout_truncated: false,
                     stderr: "".to_string(),
                     stderr_truncated: false,
-                    error: Some("exec denied by policy".to_string()),
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::PolicyDenied,
+                        message: "exec denied by policy".to_string(),
+                    }),
                 });
             }
             if policy::exec_requires_confirmation(exec) && !policy::confirmation_is_valid(confirmation_token) {
@@ -173,10 +176,13 @@ async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> Ac
                     stdout_truncated: false,
                     stderr: "".to_string(),
                     stderr_truncated: false,
-                    error: Some(format!(
-                        "confirmation required (token: {})",
-                        policy::confirmation_token_hint()
-                    )),
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::ConfirmationRequired,
+                        message: format!(
+                            "confirmation required (token: {})",
+                            policy::confirmation_token_hint()
+                        ),
+                    }),
                 });
             }
             actions::exec::run(exec).await
@@ -289,11 +295,10 @@ mod tests {
         match &response.results[0] {
             ActionResult::Exec(exec) => {
                 assert!(!exec.ok);
-                assert!(exec
-                    .error
-                    .as_deref()
-                    .unwrap_or("")
-                    .contains("confirmation required"));
+                assert_eq!(
+                    exec.error.as_ref().unwrap().code,
+                    llm_os_common::ActionErrorCode::ConfirmationRequired
+                );
             }
             _ => panic!("unexpected action result type"),
         }
@@ -483,7 +488,10 @@ mod tests {
         match &response.results[0] {
             ActionResult::Exec(exec) => {
                 assert!(!exec.ok);
-                assert!(exec.error.as_deref().unwrap_or("").contains("confirmation required"));
+                assert_eq!(
+                    exec.error.as_ref().unwrap().code,
+                    llm_os_common::ActionErrorCode::ConfirmationRequired
+                );
             }
             _ => panic!("unexpected action result type"),
         }

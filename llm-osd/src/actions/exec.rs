@@ -1,7 +1,7 @@
 // ABOUTME: executes the exec action by spawning a subprocess with bounded runtime and output.
 // ABOUTME: returns structured results suitable for deterministic consumption by llmsh.
 
-use llm_os_common::{ActionResult, ExecAction, ExecResult};
+use llm_os_common::{ActionError, ActionErrorCode, ActionResult, ExecAction, ExecResult};
 use tokio::process::Command;
 
 const MAX_STDIO_BYTES: usize = 8192;
@@ -17,7 +17,10 @@ pub async fn run(exec: &ExecAction) -> ActionResult {
                 stdout_truncated: false,
                 stderr: "".to_string(),
                 stderr_truncated: false,
-                error: Some("missing argv[0]".to_string()),
+                error: Some(ActionError {
+                    code: ActionErrorCode::ExecFailed,
+                    message: "missing argv[0]".to_string(),
+                }),
             })
         }
     };
@@ -44,7 +47,10 @@ pub async fn run(exec: &ExecAction) -> ActionResult {
                 stdout_truncated: false,
                 stderr: "".to_string(),
                 stderr_truncated: false,
-                error: Some(format!("exec failed: {err}")),
+                error: Some(ActionError {
+                    code: ActionErrorCode::ExecFailed,
+                    message: format!("exec failed: {err}"),
+                }),
             })
         }
         Err(_) => {
@@ -55,7 +61,10 @@ pub async fn run(exec: &ExecAction) -> ActionResult {
                 stdout_truncated: false,
                 stderr: "".to_string(),
                 stderr_truncated: false,
-                error: Some("exec timed out".to_string()),
+                error: Some(ActionError {
+                    code: ActionErrorCode::ExecTimedOut,
+                    message: "exec timed out".to_string(),
+                }),
             })
         }
     };

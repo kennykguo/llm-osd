@@ -54,6 +54,11 @@ request-level failures (parse/validation/mode/size) return:
 - `error.code`: deterministic string enum
 - `error.message`: human-readable detail
 
+per-action failures return:
+
+- `results[].*.error.code`: deterministic string enum
+- `results[].*.error.message`: human-readable detail
+
 ### auditing
 
 every request/action is logged with:

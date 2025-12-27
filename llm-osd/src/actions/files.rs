@@ -2,7 +2,10 @@
 // ABOUTME: uses base64 for file content transport to keep responses deterministic for binary data.
 
 use base64::Engine;
-use llm_os_common::{ActionResult, ReadFileAction, ReadFileResult, WriteFileAction, WriteFileResult};
+use llm_os_common::{
+    ActionError, ActionErrorCode, ActionResult, ReadFileAction, ReadFileResult, WriteFileAction,
+    WriteFileResult,
+};
 
 pub async fn read(read: &ReadFileAction) -> ActionResult {
     let data = match tokio::fs::read(&read.path).await {
@@ -12,7 +15,10 @@ pub async fn read(read: &ReadFileAction) -> ActionResult {
                 ok: false,
                 content_base64: None,
                 truncated: false,
-                error: Some(format!("read failed: {err}")),
+                error: Some(ActionError {
+                    code: ActionErrorCode::ReadFailed,
+                    message: format!("read failed: {err}"),
+                }),
             })
         }
     };
@@ -37,7 +43,10 @@ pub async fn write(write: &WriteFileAction) -> ActionResult {
             return ActionResult::WriteFile(WriteFileResult {
                 ok: false,
                 artifacts: vec![],
-                error: Some(err),
+                error: Some(ActionError {
+                    code: ActionErrorCode::InvalidModeString,
+                    message: err,
+                }),
             })
         }
     };
@@ -46,7 +55,10 @@ pub async fn write(write: &WriteFileAction) -> ActionResult {
         return ActionResult::WriteFile(WriteFileResult {
             ok: false,
             artifacts: vec![],
-            error: Some(format!("write failed: {err}")),
+            error: Some(ActionError {
+                code: ActionErrorCode::WriteFailed,
+                message: format!("write failed: {err}"),
+            }),
         });
     }
 
@@ -58,7 +70,10 @@ pub async fn write(write: &WriteFileAction) -> ActionResult {
             return ActionResult::WriteFile(WriteFileResult {
                 ok: false,
                 artifacts: vec![],
-                error: Some(format!("chmod failed: {err}")),
+                error: Some(ActionError {
+                    code: ActionErrorCode::WriteFailed,
+                    message: format!("chmod failed: {err}"),
+                }),
             });
         }
     }
