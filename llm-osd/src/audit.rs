@@ -4,10 +4,19 @@
 use anyhow::Context;
 use llm_os_common::{ActionPlan, ActionPlanResult};
 
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PeerCredentials {
+    pub pid: i32,
+    pub uid: u32,
+    pub gid: u32,
+}
+
 #[derive(Debug, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct AuditRecord<'a> {
     ts_unix_ms: u64,
+    peer: Option<PeerCredentials>,
     request_id: &'a str,
     session_id: Option<&'a str>,
     plan: serde_json::Value,
@@ -17,6 +26,7 @@ struct AuditRecord<'a> {
 pub async fn append_record(
     audit_path: &str,
     ts_unix_ms: u64,
+    peer: Option<PeerCredentials>,
     plan: &ActionPlan,
     result: &ActionPlanResult,
 ) -> anyhow::Result<()> {
@@ -24,6 +34,7 @@ pub async fn append_record(
 
     let record = AuditRecord {
         ts_unix_ms,
+        peer,
         request_id: plan.request_id.as_str(),
         session_id: plan.session_id.as_deref(),
         plan: redacted_plan,

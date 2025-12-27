@@ -86,6 +86,7 @@ every request/action is logged with:
 
 - request id (from client)
 - session id (from client)
+- unix peer credentials (pid/uid/gid)
 - timestamp
 - reason strings
 - argv/cwd/env diffs
