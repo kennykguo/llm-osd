@@ -309,6 +309,14 @@ async fn execute_action(
                 message: "observe is not supported in execute mode".to_string(),
             }),
         }),
+        Action::CgroupApply(_cg) => ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "cgroup_apply is not supported in execute mode".to_string(),
+            }),
+        }),
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
 }
@@ -554,6 +562,43 @@ async fn plan_action(action: &Action, confirmation_token: Option<&str>, confirm_
                 ok: true,
                 argv,
                 error: None,
+            })
+        }
+        Action::CgroupApply(cg) => {
+            let mut argv = Vec::new();
+            argv.push("systemd-run".to_string());
+            argv.push("--scope".to_string());
+            if let Some(w) = cg.cpu_weight {
+                argv.push("-p".to_string());
+                argv.push(format!("CPUWeight={w}"));
+            }
+            if let Some(m) = cg.mem_max_bytes {
+                argv.push("-p".to_string());
+                argv.push(format!("MemoryMax={m}"));
+            }
+            if let Some(pid) = cg.pid {
+                argv.push(format!("--pid={pid}"));
+                return ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
+                    ok: true,
+                    argv,
+                    error: None,
+                });
+            }
+            if let Some(unit) = &cg.unit {
+                argv.push(format!("--unit={unit}"));
+                return ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
+                    ok: true,
+                    argv,
+                    error: None,
+                });
+            }
+            ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
+                ok: false,
+                argv: vec![],
+                error: Some(llm_os_common::ActionError {
+                    code: llm_os_common::ActionErrorCode::PolicyDenied,
+                    message: "cgroup_apply target is invalid".to_string(),
+                }),
             })
         }
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
@@ -978,6 +1023,65 @@ mod tests {
             ActionResult::Observe(r) => {
                 assert!(r.ok);
                 assert_eq!(r.argv, vec!["ps", "aux"]);
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_cgroup_apply_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-cg-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"cgroup_apply","pid":1234,"unit":null,"cpu_weight":100,"mem_max_bytes":1048576,"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-cg-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::CgroupApply(r) => {
+                assert!(r.ok);
+                assert_eq!(
+                    r.argv,
+                    vec![
+                        "systemd-run",
+                        "--scope",
+                        "-p",
+                        "CPUWeight=100",
+                        "-p",
+                        "MemoryMax=1048576",
+                        "--pid=1234"
+                    ]
+                );
             }
             _ => panic!("unexpected action result type"),
         }

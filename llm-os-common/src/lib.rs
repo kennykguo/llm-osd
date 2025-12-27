@@ -60,7 +60,20 @@ pub enum Action {
     RemovePackages(RemovePackagesAction),
     UpdateSystem(UpdateSystemAction),
     Observe(ObserveAction),
+    CgroupApply(CgroupApplyAction),
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CgroupApplyAction {
+    pub pid: Option<u32>,
+    pub unit: Option<String>,
+    pub cpu_weight: Option<u64>,
+    pub mem_max_bytes: Option<u64>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -217,7 +230,16 @@ pub enum ActionResult {
     RemovePackages(RemovePackagesResult),
     UpdateSystem(UpdateSystemResult),
     Observe(ObserveResult),
+    CgroupApply(CgroupApplyResult),
     Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CgroupApplyResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -706,6 +728,45 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if obs.reason.as_bytes().len() > MAX_REASON_BYTES {
                     return Err(ValidationError {
                         message: "observe.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::CgroupApply(cg) => {
+                if cg.pid.is_none() && cg.unit.is_none() {
+                    return Err(ValidationError {
+                        message: "cgroup_apply requires pid or unit".to_string(),
+                    });
+                }
+                if cg.pid.is_some() && cg.unit.is_some() {
+                    return Err(ValidationError {
+                        message: "cgroup_apply must not set both pid and unit".to_string(),
+                    });
+                }
+                if let Some(unit) = &cg.unit {
+                    if unit.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "cgroup_apply.unit must be non-empty when provided".to_string(),
+                        });
+                    }
+                    if unit.as_bytes().len() > MAX_SYSTEMD_UNIT_BYTES {
+                        return Err(ValidationError {
+                            message: "cgroup_apply.unit is too long".to_string(),
+                        });
+                    }
+                }
+                if cg.cpu_weight.is_none() && cg.mem_max_bytes.is_none() {
+                    return Err(ValidationError {
+                        message: "cgroup_apply requires at least one setting".to_string(),
+                    });
+                }
+                if cg.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "cgroup_apply.reason must be non-empty".to_string(),
+                    });
+                }
+                if cg.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "cgroup_apply.reason is too long".to_string(),
                     });
                 }
             }

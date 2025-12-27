@@ -67,6 +67,14 @@ this returns `executed=false` and a structured result describing what would run.
 echo '{"request_id":"req-plan-obs-1","version":"0.1","mode":"plan_only","actions":[{"type":"observe","tool":"ps","args":["aux"],"reason":"inspect processes","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
 ```
 
+## cgroup_apply (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-cg-1","version":"0.1","mode":"plan_only","actions":[{"type":"cgroup_apply","pid":1234,"unit":null,"cpu_weight":100,"mem_max_bytes":1048576,"reason":"apply cgroup settings","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
 ## send a plan from stdin
 
 ```bash
