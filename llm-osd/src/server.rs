@@ -45,9 +45,11 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
         return Err(anyhow::anyhow!("only mode=execute is accepted by the daemon"));
     }
 
+    let confirmation_token = plan.confirmation.as_ref().map(|c| c.token.as_str());
+
     let mut results = Vec::with_capacity(plan.actions.len());
     for action in &plan.actions {
-        let result = execute_action(action).await;
+        let result = execute_action(action, confirmation_token).await;
         results.push(result);
     }
 
@@ -65,7 +67,7 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
     Ok(())
 }
 
-async fn execute_action(action: &Action) -> ActionResult {
+async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> ActionResult {
     match action {
         Action::Exec(exec) => {
             if policy::is_exec_denied(exec) {
@@ -75,6 +77,18 @@ async fn execute_action(action: &Action) -> ActionResult {
                     stdout: "".to_string(),
                     stderr: "".to_string(),
                     error: Some("exec denied by policy".to_string()),
+                });
+            }
+            if policy::exec_requires_confirmation(exec) && !policy::confirmation_is_valid(confirmation_token) {
+                return ActionResult::Exec(llm_os_common::ExecResult {
+                    ok: false,
+                    exit_code: None,
+                    stdout: "".to_string(),
+                    stderr: "".to_string(),
+                    error: Some(format!(
+                        "confirmation required (token: {})",
+                        policy::confirmation_token_hint()
+                    )),
                 });
             }
             actions::exec::run(exec).await
@@ -116,8 +130,8 @@ mod tests {
         stream.write_all(plan.as_bytes()).await.unwrap();
         stream.shutdown().await.unwrap();
 
-        let mut out = Vec::new();
-        stream.read_to_end(&mut out).await.unwrap();
+    let mut out = Vec::new();
+    stream.read_to_end(&mut out).await.unwrap();
         let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
         assert_eq!(response.results.len(), 1);
 
@@ -128,6 +142,80 @@ mod tests {
             }
             _ => panic!("unexpected action result type"),
         }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_exec_rm_requires_confirmation() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+        let file_path = dir.path().join("deleteme.txt");
+        tokio::fs::write(&file_path, "x").await.unwrap();
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan_without = format!(
+            r#"{{
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"exec","argv":["/bin/rm","{}"],"cwd":"{}","env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}]
+            }}"#,
+            file_path.file_name().unwrap().to_string_lossy(),
+            dir.path().to_string_lossy()
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_without.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        match &response.results[0] {
+            ActionResult::Exec(exec) => {
+                assert!(!exec.ok);
+                assert!(exec.error.as_deref().unwrap_or("").contains("confirmation required"));
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        let plan_with = format!(
+            r#"{{
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"exec","argv":["/bin/rm","{}"],"cwd":"{}","env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}],
+              "confirmation":{{"token":"{}"}}
+            }}"#,
+            file_path.file_name().unwrap().to_string_lossy(),
+            dir.path().to_string_lossy(),
+            policy::confirmation_token_hint()
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_with.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        match &response.results[0] {
+            ActionResult::Exec(exec) => assert!(exec.ok),
+            _ => panic!("unexpected action result type"),
+        }
+
+        assert!(!file_path.exists());
 
         server.abort();
     }

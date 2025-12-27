@@ -16,6 +16,13 @@ pub struct ActionPlan {
     pub version: String,
     pub mode: Mode,
     pub actions: Vec<Action>,
+    pub confirmation: Option<Confirmation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Confirmation {
+    pub token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -142,6 +149,10 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "exec.reason must be non-empty".to_string(),
                     });
                 }
+
+                if exec.danger.is_some() {
+                    require_confirmation(plan, "exec requires confirmation when danger is set")?;
+                }
             }
             Action::ReadFile(read) => {
                 if read.path.trim().is_empty() {
@@ -158,6 +169,10 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                     return Err(ValidationError {
                         message: "read_file.reason must be non-empty".to_string(),
                     });
+                }
+
+                if read.danger.is_some() {
+                    require_confirmation(plan, "read_file requires confirmation when danger is set")?;
                 }
             }
             Action::WriteFile(write) => {
@@ -176,11 +191,24 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "write_file.reason must be non-empty".to_string(),
                     });
                 }
+
+                if write.danger.is_some() {
+                    require_confirmation(plan, "write_file requires confirmation when danger is set")?;
+                }
             }
         }
     }
 
     Ok(())
+}
+
+fn require_confirmation(plan: &ActionPlan, message: &str) -> Result<(), ValidationError> {
+    match &plan.confirmation {
+        Some(c) if !c.token.trim().is_empty() => Ok(()),
+        _ => Err(ValidationError {
+            message: message.to_string(),
+        }),
+    }
 }
 
 #[cfg(test)]
@@ -225,10 +253,36 @@ mod tests {
                 danger: None,
                 recovery: None,
             })],
+            confirmation: None,
         };
 
         let err = validate_action_plan(&plan).unwrap_err();
         assert_eq!(err.message, "exec.argv must be non-empty");
+    }
+
+    #[test]
+    fn validate_requires_confirmation_when_danger_is_set() {
+        let plan = ActionPlan {
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: Some("danger".to_string()),
+                recovery: Some("recovery".to_string()),
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(
+            err.message,
+            "exec requires confirmation when danger is set"
+        );
     }
 }
 

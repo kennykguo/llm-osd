@@ -15,6 +15,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 
 - wip branch created and snapshotted: `wip/2025-12-27-mvp`
 - added `llm-os-common` shared protocol crate with strict parsing (`deny_unknown_fields`) and a failing test proving hallucination rejection
+- added explicit confirmation token support in the actionplan schema and daemon-side enforcement for policy-sensitive exec (mvp: rm)
 
 ## next steps
 
@@ -28,5 +29,8 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 - implement `llmsh` cli client that:
   - sends a plan to `llm-osd`
   - prints results deterministically (json)
+
+- add a confirmation milestone:
+  - daemon blocks policy-sensitive actions unless `confirmation.token` matches the expected value
 
 

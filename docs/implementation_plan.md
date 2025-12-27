@@ -129,4 +129,8 @@ exit criteria:
 - risk tagging for actions
 - daemon refuses dangerous actions without explicit confirmation token
 
+notes:
+
+- mvp policy also supports requiring confirmation for specific exec programs even if `danger` is unset (example: `rm`)
+
 
