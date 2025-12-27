@@ -59,7 +59,29 @@ pub enum Action {
     InstallPackages(InstallPackagesAction),
     RemovePackages(RemovePackagesAction),
     UpdateSystem(UpdateSystemAction),
+    Observe(ObserveAction),
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObserveTool {
+    Ps,
+    Top,
+    Journalctl,
+    Perf,
+    Bpftrace,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ObserveAction {
+    pub tool: ObserveTool,
+    pub args: Vec<String>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -194,7 +216,16 @@ pub enum ActionResult {
     InstallPackages(InstallPackagesResult),
     RemovePackages(RemovePackagesResult),
     UpdateSystem(UpdateSystemResult),
+    Observe(ObserveResult),
     Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ObserveResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -288,6 +319,8 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_SYSTEMD_UNIT_BYTES: usize = 256;
     const MAX_PACKAGE_NAME_BYTES: usize = 128;
     const MAX_PACKAGES: usize = 128;
+    const MAX_OBSERVE_ARGS: usize = 64;
+    const MAX_OBSERVE_ARG_BYTES: usize = 2048;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -644,6 +677,35 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if upd.reason.as_bytes().len() > MAX_REASON_BYTES {
                     return Err(ValidationError {
                         message: "update_system.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::Observe(obs) => {
+                if obs.args.len() > MAX_OBSERVE_ARGS {
+                    return Err(ValidationError {
+                        message: "observe.args has too many entries".to_string(),
+                    });
+                }
+                for arg in &obs.args {
+                    if arg.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "observe.args entries must be non-empty".to_string(),
+                        });
+                    }
+                    if arg.as_bytes().len() > MAX_OBSERVE_ARG_BYTES {
+                        return Err(ValidationError {
+                            message: "observe.args entry is too long".to_string(),
+                        });
+                    }
+                }
+                if obs.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "observe.reason must be non-empty".to_string(),
+                    });
+                }
+                if obs.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "observe.reason is too long".to_string(),
                     });
                 }
             }

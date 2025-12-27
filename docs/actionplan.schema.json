@@ -346,6 +346,47 @@
         {
           "type": "object",
           "required": [
+            "args",
+            "reason",
+            "tool",
+            "type"
+          ],
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "danger": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tool": {
+              "$ref": "#/definitions/ObserveTool"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "observe"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "type"
           ],
           "properties": {
@@ -376,6 +417,17 @@
       "enum": [
         "plan_only",
         "execute"
+      ]
+    },
+    "ObserveTool": {
+      "type": "string",
+      "enum": [
+        "ps",
+        "top",
+        "journalctl",
+        "perf",
+        "bpftrace",
+        "other"
       ]
     },
     "PackageManager": {
