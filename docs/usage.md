@@ -44,6 +44,7 @@ notes:
 
 - only allowlisted programs run without confirmation (mvp: `/bin/echo`)
 - non-allowlisted programs require `confirmation.token`
+- `exec.as_root` is rejected by validation in the mvp
 
 ## confirmation token
 

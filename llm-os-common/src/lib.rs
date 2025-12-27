@@ -196,6 +196,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "exec.argv must be non-empty".to_string(),
                     });
                 }
+                if exec.as_root {
+                    return Err(ValidationError {
+                        message: "exec.as_root is not supported".to_string(),
+                    });
+                }
                 if let Some(cwd) = &exec.cwd {
                     if cwd.trim().is_empty() {
                         return Err(ValidationError {
@@ -359,6 +364,30 @@ mod tests {
         let schema = schemars::schema_for!(ActionPlan);
         let value = serde_json::to_value(&schema).unwrap();
         assert!(value.to_string().contains("\"request_id\""));
+    }
+
+    #[test]
+    fn validate_rejects_as_root_true() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: true,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "exec.as_root is not supported");
     }
 }
 
