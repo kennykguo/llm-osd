@@ -67,6 +67,7 @@ read_file semantics:
 
 - daemon reads at most `max_bytes` (plus one extra byte for truncation detection)
 - `truncated=true` means the file had more than `max_bytes` bytes
+- `max_bytes` is capped by validation (mvp: 65536)
 
 ### auditing
 

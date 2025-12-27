@@ -71,6 +71,7 @@ the daemon returns `content_base64` and `truncated`.
 notes:
 
 - the daemon only reads up to `max_bytes` (plus one extra byte to detect truncation), so `read_file` does not load large files into memory.
+- `max_bytes` is capped by validation (mvp: 65536).
 - absolute paths outside `/tmp/` require a confirmation token.
 
 ## write a file

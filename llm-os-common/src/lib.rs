@@ -168,6 +168,8 @@ pub struct ValidationError {
 }
 
 pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
+    const MAX_READ_FILE_BYTES: u64 = 64 * 1024;
+
     if plan.request_id.trim().is_empty() {
         return Err(ValidationError {
             message: "request_id must be non-empty".to_string(),
@@ -232,6 +234,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if read.max_bytes == 0 {
                     return Err(ValidationError {
                         message: "read_file.max_bytes must be >= 1".to_string(),
+                    });
+                }
+                if read.max_bytes > MAX_READ_FILE_BYTES {
+                    return Err(ValidationError {
+                        message: "read_file.max_bytes is too large".to_string(),
                     });
                 }
                 if read.reason.trim().is_empty() {
@@ -388,6 +395,27 @@ mod tests {
 
         let err = validate_action_plan(&plan).unwrap_err();
         assert_eq!(err.message, "exec.as_root is not supported");
+    }
+
+    #[test]
+    fn validate_rejects_read_file_max_bytes_too_large() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::ReadFile(ReadFileAction {
+                path: "./Cargo.toml".to_string(),
+                max_bytes: 10 * 1024 * 1024,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "read_file.max_bytes is too large");
     }
 }
 
