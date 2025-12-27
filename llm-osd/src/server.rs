@@ -1857,6 +1857,87 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn audit_redacts_exec_and_observe_stdout() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let secret = "super-secret-stdout";
+
+        let plan_exec = format!(
+            r#"{{
+              "request_id":"req-exec-secret-1",
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"exec","argv":["/usr/bin/printenv","SECRET"],"cwd":null,"env":{{"SECRET":"{}"}},"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}]
+            }}"#,
+            secret
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_exec.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert!(response.error.is_none());
+
+        let plan_observe = r#"{
+          "request_id":"req-observe-ps-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"observe","tool":"ps","args":["aux"],"reason":"test","danger":null,"recovery":null}]
+        }"#;
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_observe.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert!(response.error.is_none());
+
+        for _ in 0..50u32 {
+            if let Ok(meta) = tokio::fs::metadata(&audit_path).await {
+                if meta.len() > 0 {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let audit_text = tokio::fs::read_to_string(&audit_path).await.unwrap();
+        assert!(!audit_text.contains(secret));
+
+        let exec_line = audit_text
+            .lines()
+            .find(|l| l.contains(r#""request_id":"req-exec-secret-1""#))
+            .unwrap();
+        let exec_v: serde_json::Value = serde_json::from_str(exec_line).unwrap();
+        assert_eq!(exec_v["result"]["results"][0]["stdout"], "[redacted]");
+
+        let observe_line = audit_text
+            .lines()
+            .find(|l| l.contains(r#""request_id":"req-observe-ps-1""#))
+            .unwrap();
+        let observe_v: serde_json::Value = serde_json::from_str(observe_line).unwrap();
+        assert_eq!(observe_v["result"]["results"][0]["stdout"], "[redacted]");
+
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn server_read_file_absolute_path_requires_confirmation() {
         let dir = tempfile::tempdir().unwrap();
         let socket_path = dir.path().join("llm-osd.sock");

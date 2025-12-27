@@ -113,7 +113,7 @@ every request/action is logged with:
 
 notes:
 
-- audit redacts confirmation tokens, exec env values, and write_file content
+- audit redacts confirmation tokens, exec env values, write_file content, read_file content, and action stdout/stderr
 
 ## code structure for extensibility
 

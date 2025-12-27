@@ -20,7 +20,7 @@ struct AuditRecord<'a> {
     request_id: &'a str,
     session_id: Option<&'a str>,
     plan: serde_json::Value,
-    result: &'a ActionPlanResult,
+    result: serde_json::Value,
 }
 
 pub async fn append_record(
@@ -31,6 +31,7 @@ pub async fn append_record(
     result: &ActionPlanResult,
 ) -> anyhow::Result<()> {
     let redacted_plan = redact_plan(plan)?;
+    let redacted_result = redact_result(result)?;
 
     let record = AuditRecord {
         ts_unix_ms,
@@ -38,7 +39,7 @@ pub async fn append_record(
         request_id: plan.request_id.as_str(),
         session_id: plan.session_id.as_deref(),
         plan: redacted_plan,
-        result,
+        result: redacted_result,
     };
 
     let mut line = serde_json::to_vec(&record)?;
@@ -98,6 +99,46 @@ fn redact_plan(plan: &ActionPlan) -> anyhow::Result<serde_json::Value> {
         }
     }
 
+    Ok(v)
+}
+
+fn redact_result(result: &ActionPlanResult) -> anyhow::Result<serde_json::Value> {
+    let mut v = serde_json::to_value(result)?;
+    if let Some(obj) = v.as_object_mut() {
+        if let Some(results) = obj.get_mut("results") {
+            if let Some(arr) = results.as_array_mut() {
+                for action in arr {
+                    if let Some(action_obj) = action.as_object_mut() {
+                        match action_obj.get("type").and_then(|t| t.as_str()) {
+                            Some("exec") | Some("observe") => {
+                                if action_obj.contains_key("stdout") {
+                                    action_obj.insert(
+                                        "stdout".to_string(),
+                                        serde_json::Value::String("[redacted]".to_string()),
+                                    );
+                                }
+                                if action_obj.contains_key("stderr") {
+                                    action_obj.insert(
+                                        "stderr".to_string(),
+                                        serde_json::Value::String("[redacted]".to_string()),
+                                    );
+                                }
+                            }
+                            Some("read_file") => {
+                                if action_obj.contains_key("content_base64") {
+                                    action_obj.insert(
+                                        "content_base64".to_string(),
+                                        serde_json::Value::String("[redacted]".to_string()),
+                                    );
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
     Ok(v)
 }
 
