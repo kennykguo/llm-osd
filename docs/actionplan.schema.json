@@ -447,6 +447,46 @@
         {
           "type": "object",
           "required": [
+            "op",
+            "reason",
+            "type"
+          ],
+          "properties": {
+            "danger": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "op": {
+              "$ref": "#/definitions/FirmwareOp"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "firmware_op"
+              ]
+            },
+            "uefi_var_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "type"
           ],
           "properties": {
@@ -471,6 +511,14 @@
         }
       },
       "additionalProperties": false
+    },
+    "FirmwareOp": {
+      "type": "string",
+      "enum": [
+        "inventory",
+        "fwupd_update",
+        "uefi_var_read"
+      ]
     },
     "Mode": {
       "type": "string",

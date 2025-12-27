@@ -61,7 +61,26 @@ pub enum Action {
     UpdateSystem(UpdateSystemAction),
     Observe(ObserveAction),
     CgroupApply(CgroupApplyAction),
+    FirmwareOp(FirmwareOpAction),
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FirmwareOp {
+    Inventory,
+    FwupdUpdate,
+    UefiVarRead,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct FirmwareOpAction {
+    pub op: FirmwareOp,
+    pub uefi_var_name: Option<String>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -231,7 +250,16 @@ pub enum ActionResult {
     UpdateSystem(UpdateSystemResult),
     Observe(ObserveResult),
     CgroupApply(CgroupApplyResult),
+    FirmwareOp(FirmwareOpResult),
     Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct FirmwareOpResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -343,6 +371,7 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_PACKAGES: usize = 128;
     const MAX_OBSERVE_ARGS: usize = 64;
     const MAX_OBSERVE_ARG_BYTES: usize = 2048;
+    const MAX_UEFI_VAR_NAME_BYTES: usize = 256;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -768,6 +797,39 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                     return Err(ValidationError {
                         message: "cgroup_apply.reason is too long".to_string(),
                     });
+                }
+            }
+            Action::FirmwareOp(fw) => {
+                if fw.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "firmware_op.reason must be non-empty".to_string(),
+                    });
+                }
+                if fw.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "firmware_op.reason is too long".to_string(),
+                    });
+                }
+                match fw.op {
+                    FirmwareOp::UefiVarRead => {
+                        let name = fw.uefi_var_name.as_deref().unwrap_or("");
+                        if name.trim().is_empty() {
+                            return Err(ValidationError {
+                                message: "firmware_op.uefi_var_name must be set for uefi_var_read".to_string(),
+                            });
+                        }
+                        if name.contains('/') || name.contains('\\') || name.contains("..") {
+                            return Err(ValidationError {
+                                message: "firmware_op.uefi_var_name must be a filename".to_string(),
+                            });
+                        }
+                        if name.as_bytes().len() > MAX_UEFI_VAR_NAME_BYTES {
+                            return Err(ValidationError {
+                                message: "firmware_op.uefi_var_name is too long".to_string(),
+                            });
+                        }
+                    }
+                    FirmwareOp::Inventory | FirmwareOp::FwupdUpdate => {}
                 }
             }
             Action::Ping => {}

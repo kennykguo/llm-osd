@@ -317,6 +317,14 @@ async fn execute_action(
                 message: "cgroup_apply is not supported in execute mode".to_string(),
             }),
         }),
+        Action::FirmwareOp(_fw) => ActionResult::FirmwareOp(llm_os_common::FirmwareOpResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "firmware_op is not supported in execute mode".to_string(),
+            }),
+        }),
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
 }
@@ -599,6 +607,35 @@ async fn plan_action(action: &Action, confirmation_token: Option<&str>, confirm_
                     code: llm_os_common::ActionErrorCode::PolicyDenied,
                     message: "cgroup_apply target is invalid".to_string(),
                 }),
+            })
+        }
+        Action::FirmwareOp(fw) => {
+            let argv = match fw.op {
+                llm_os_common::FirmwareOp::Inventory => vec!["dmidecode".to_string()],
+                llm_os_common::FirmwareOp::FwupdUpdate => vec!["fwupdmgr".to_string(), "update".to_string()],
+                llm_os_common::FirmwareOp::UefiVarRead => {
+                    let name = fw.uefi_var_name.as_deref().unwrap_or("");
+                    if name.trim().is_empty() {
+                        return ActionResult::FirmwareOp(llm_os_common::FirmwareOpResult {
+                            ok: false,
+                            argv: vec![],
+                            error: Some(llm_os_common::ActionError {
+                                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                                message: "firmware_op target is invalid".to_string(),
+                            }),
+                        });
+                    }
+                    vec![
+                        "cat".to_string(),
+                        format!("/sys/firmware/efi/efivars/{name}"),
+                    ]
+                }
+            };
+
+            ActionResult::FirmwareOp(llm_os_common::FirmwareOpResult {
+                ok: true,
+                argv,
+                error: None,
             })
         }
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
@@ -1082,6 +1119,54 @@ mod tests {
                         "--pid=1234"
                     ]
                 );
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_firmware_op_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-fw-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"firmware_op","op":"inventory","uefi_var_name":null,"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-fw-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::FirmwareOp(r) => {
+                assert!(r.ok);
+                assert_eq!(r.argv, vec!["dmidecode"]);
             }
             _ => panic!("unexpected action result type"),
         }
