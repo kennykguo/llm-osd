@@ -120,27 +120,20 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str, confirm_token: 
         return Ok(());
     }
 
-    if plan.mode != Mode::Execute {
-        let _ = write_request_error(
-            &mut stream,
-            &plan.request_id,
-            ErrorCode::InvalidMode,
-            "invalid mode",
-        )
-        .await;
-        return Ok(());
-    }
-
     let confirmation_token = plan.confirmation.as_ref().map(|c| c.token.as_str());
 
     let mut results = Vec::with_capacity(plan.actions.len());
     for action in &plan.actions {
-        let result = execute_action(action, confirmation_token, confirm_token).await;
+        let result = match plan.mode {
+            Mode::Execute => execute_action(action, confirmation_token, confirm_token).await,
+            Mode::PlanOnly => plan_action(action, confirmation_token, confirm_token).await,
+        };
         results.push(result);
     }
 
     let response = ActionPlanResult {
         request_id: plan.request_id.clone(),
+        executed: plan.mode == Mode::Execute,
         results,
         error: None,
     };
@@ -193,6 +186,7 @@ async fn write_request_error(
 ) -> anyhow::Result<()> {
     let response = ActionPlanResult {
         request_id: request_id.to_string(),
+        executed: false,
         results: vec![],
         error: Some(RequestError {
             code,
@@ -274,6 +268,93 @@ async fn execute_action(
                 });
             }
             actions::files::write(write).await
+        }
+        Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
+    }
+}
+
+async fn plan_action(action: &Action, confirmation_token: Option<&str>, confirm_token: &str) -> ActionResult {
+    match action {
+        Action::Exec(exec) => {
+            if policy::is_exec_denied(exec) {
+                return ActionResult::Exec(llm_os_common::ExecResult {
+                    ok: false,
+                    exit_code: None,
+                    stdout: "".to_string(),
+                    stdout_truncated: false,
+                    stderr: "".to_string(),
+                    stderr_truncated: false,
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::PolicyDenied,
+                        message: "exec denied by policy".to_string(),
+                    }),
+                });
+            }
+            if policy::exec_requires_confirmation(exec)
+                && !policy::confirmation_is_valid(confirmation_token, confirm_token)
+            {
+                return ActionResult::Exec(llm_os_common::ExecResult {
+                    ok: false,
+                    exit_code: None,
+                    stdout: "".to_string(),
+                    stdout_truncated: false,
+                    stderr: "".to_string(),
+                    stderr_truncated: false,
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::ConfirmationRequired,
+                        message: "confirmation required".to_string(),
+                    }),
+                });
+            }
+            ActionResult::Exec(llm_os_common::ExecResult {
+                ok: true,
+                exit_code: None,
+                stdout: "".to_string(),
+                stdout_truncated: false,
+                stderr: "".to_string(),
+                stderr_truncated: false,
+                error: None,
+            })
+        }
+        Action::ReadFile(read) => {
+            if policy::path_requires_confirmation(&read.path)
+                && !policy::confirmation_is_valid(confirmation_token, confirm_token)
+            {
+                return ActionResult::ReadFile(llm_os_common::ReadFileResult {
+                    ok: false,
+                    content_base64: None,
+                    truncated: false,
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::ConfirmationRequired,
+                        message: "confirmation required".to_string(),
+                    }),
+                });
+            }
+            ActionResult::ReadFile(llm_os_common::ReadFileResult {
+                ok: true,
+                content_base64: None,
+                truncated: false,
+                error: None,
+            })
+        }
+        Action::WriteFile(write) => {
+            if policy::path_requires_confirmation(&write.path)
+                && !policy::confirmation_is_valid(confirmation_token, confirm_token)
+            {
+                return ActionResult::WriteFile(llm_os_common::WriteFileResult {
+                    ok: false,
+                    artifacts: vec![],
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::ConfirmationRequired,
+                        message: "confirmation required".to_string(),
+                    }),
+                });
+            }
+            ActionResult::WriteFile(llm_os_common::WriteFileResult {
+                ok: true,
+                artifacts: vec![],
+                error: None,
+            })
         }
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
@@ -398,6 +479,56 @@ mod tests {
         assert!(v["peer"]["uid"].is_number());
         assert!(v["peer"]["gid"].is_number());
         assert_eq!(v["peer"]["pid"].as_u64().unwrap(), std::process::id() as u64);
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_write_file_has_no_side_effects() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+        let out_path = dir.path().join("plan-only.txt");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = format!(
+            r#"{{
+              "request_id":"req-plan-only-1",
+              "version":"0.1",
+              "mode":"plan_only",
+              "actions":[{{"type":"write_file","path":"{}","content":"hi","mode":"0644","reason":"test","danger":null,"recovery":null}}]
+            }}"#,
+            out_path.to_string_lossy()
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        match &response.results[0] {
+            ActionResult::WriteFile(w) => assert!(w.ok),
+            _ => panic!("unexpected action result type"),
+        }
+
+        assert!(!out_path.exists());
 
         server.abort();
     }

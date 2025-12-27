@@ -53,6 +53,7 @@ an action plan is a single json document:
 
 for each action, return:
 
+- `executed`: boolean (false for `plan_only`, true for `execute`)
 - `ok`: boolean
 - `stdout` / `stderr`: strings (with explicit truncation marker if truncated)
 - `stdout_truncated` / `stderr_truncated`: booleans

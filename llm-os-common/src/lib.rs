@@ -100,6 +100,7 @@ pub fn parse_action_plan(input: &str) -> Result<ActionPlan, serde_json::Error> {
 #[serde(deny_unknown_fields)]
 pub struct ActionPlanResult {
     pub request_id: String,
+    pub executed: bool,
     pub results: Vec<ActionResult>,
     pub error: Option<RequestError>,
 }

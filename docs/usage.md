@@ -25,6 +25,7 @@ cargo run -p llmsh -- ping --socket-path /tmp/llm-osd.sock --session-id sess-1
 ```
 
 the response is json and includes `request_id`, `results`, and optional `error`.
+the response also includes `executed` so callers can distinguish `plan_only` from `execute`.
 
 ## send a plan from stdin
 
