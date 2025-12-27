@@ -32,6 +32,14 @@ the response is json and includes `request_id`, `results`, and optional `error`.
 echo '{"request_id":"req-echo-1","version":"0.1","mode":"execute","actions":[{"type":"exec","argv":["/bin/echo","hi"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
 ```
 
+## local validation (no daemon)
+
+validate a plan without sending it to the daemon:
+
+```bash
+echo '{"request_id":"req-validate-1","version":"0.1","mode":"plan_only","actions":[{"type":"ping"}]}' | cargo run -p llmsh -- validate
+```
+
 notes:
 
 - only allowlisted programs run without confirmation (mvp: `/bin/echo`)
