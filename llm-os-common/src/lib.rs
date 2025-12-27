@@ -182,6 +182,7 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_PATH_BYTES: usize = 4096;
     const MAX_VERSION_BYTES: usize = 128;
     const MAX_MODE_BYTES: usize = 128;
+    const MAX_EXEC_TIMEOUT_SEC: u64 = 60;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -295,6 +296,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "exec.timeout_sec must be >= 1".to_string(),
                     });
                 }
+                if exec.timeout_sec > MAX_EXEC_TIMEOUT_SEC {
+                    return Err(ValidationError {
+                        message: "exec.timeout_sec is too large".to_string(),
+                    });
+                }
                 if exec.reason.trim().is_empty() {
                     return Err(ValidationError {
                         message: "exec.reason must be non-empty".to_string(),
@@ -400,6 +406,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "write_file.mode is too long".to_string(),
                     });
                 }
+                if !is_octal_mode(&write.mode) {
+                    return Err(ValidationError {
+                        message: "write_file.mode is invalid".to_string(),
+                    });
+                }
                 if write.reason.trim().is_empty() {
                     return Err(ValidationError {
                         message: "write_file.reason must be non-empty".to_string(),
@@ -434,6 +445,16 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     }
 
     Ok(())
+}
+
+fn is_octal_mode(mode: &str) -> bool {
+    let mode = mode.trim();
+    let mode = mode.strip_prefix("0o").unwrap_or(mode);
+    let bytes = mode.as_bytes();
+    if bytes.len() != 3 && bytes.len() != 4 {
+        return false;
+    }
+    bytes.iter().all(|b| (*b >= b'0') && (*b <= b'7'))
 }
 
 fn require_confirmation(plan: &ActionPlan, message: &str) -> Result<(), ValidationError> {
@@ -922,6 +943,52 @@ mod tests {
         };
         let err = validate_action_plan(&plan).unwrap_err();
         assert_eq!(err.message, "write_file.mode is too long");
+    }
+
+    #[test]
+    fn validate_rejects_exec_timeout_too_large() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: None,
+                timeout_sec: 61,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "exec.timeout_sec is too large");
+    }
+
+    #[test]
+    fn validate_rejects_write_file_mode_format() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::WriteFile(WriteFileAction {
+                path: "./out.txt".to_string(),
+                content: "x".to_string(),
+                mode: "not-octal".to_string(),
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "write_file.mode is invalid");
     }
 }
 
