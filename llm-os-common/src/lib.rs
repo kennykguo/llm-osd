@@ -173,6 +173,9 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_ACTIONS: usize = 64;
     const MAX_EXEC_ARGC: usize = 64;
     const MAX_EXEC_ARG_BYTES: usize = 2048;
+    const MAX_EXEC_ENV_ENTRIES: usize = 32;
+    const MAX_EXEC_ENV_KEY_BYTES: usize = 128;
+    const MAX_EXEC_ENV_VALUE_BYTES: usize = 2048;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -232,6 +235,25 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         return Err(ValidationError {
                             message: "exec.cwd must be non-empty when provided".to_string(),
                         });
+                    }
+                }
+                if let Some(env) = &exec.env {
+                    if env.len() > MAX_EXEC_ENV_ENTRIES {
+                        return Err(ValidationError {
+                            message: "exec.env has too many entries".to_string(),
+                        });
+                    }
+                    for (k, v) in env {
+                        if k.as_bytes().len() > MAX_EXEC_ENV_KEY_BYTES {
+                            return Err(ValidationError {
+                                message: "exec.env key is too long".to_string(),
+                            });
+                        }
+                        if v.as_bytes().len() > MAX_EXEC_ENV_VALUE_BYTES {
+                            return Err(ValidationError {
+                                message: "exec.env value is too long".to_string(),
+                            });
+                        }
                     }
                 }
                 if exec.timeout_sec == 0 {
@@ -542,6 +564,86 @@ mod tests {
 
         let err = validate_action_plan(&plan).unwrap_err();
         assert_eq!(err.message, "exec.argv arg is too long");
+    }
+
+    #[test]
+    fn validate_rejects_exec_env_too_many_entries() {
+        let mut env = std::collections::BTreeMap::new();
+        for i in 0..33 {
+            env.insert(format!("K{i}"), "V".to_string());
+        }
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: Some(env),
+                timeout_sec: 5,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "exec.env has too many entries");
+    }
+
+    #[test]
+    fn validate_rejects_exec_env_key_too_long() {
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("K".repeat(129), "V".to_string());
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: Some(env),
+                timeout_sec: 5,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "exec.env key is too long");
+    }
+
+    #[test]
+    fn validate_rejects_exec_env_value_too_long() {
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("K".to_string(), "V".repeat(2049));
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: Some(env),
+                timeout_sec: 5,
+                as_root: false,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "exec.env value is too long");
     }
 }
 

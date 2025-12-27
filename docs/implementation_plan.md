@@ -37,6 +37,7 @@ an action plan is a single json document:
 - schema parsing uses `deny_unknown_fields` everywhere
 - per-action validators enforce required fields and bounds
 - validator caps number of actions per plan and caps exec argv sizes
+- validator caps exec env sizes
 - the executor enforces an allowlist and explicit confirmation policies for dangerous actions
 - exec is allowlisted by default; non-allowlisted programs require confirmation
 - exec.as_root is rejected by validation in the mvp
