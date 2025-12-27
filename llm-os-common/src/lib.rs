@@ -1,9 +1,10 @@
 // ABOUTME: defines the shared action protocol types used by llmsh and llm-osd.
 // ABOUTME: provides parsing and validation helpers to keep execution deterministic.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     ParseFailed,
@@ -12,7 +13,7 @@ pub enum ErrorCode {
     RequestTooLarge,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionErrorCode {
     PolicyDenied,
@@ -24,14 +25,14 @@ pub enum ActionErrorCode {
     InvalidModeString,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
     PlanOnly,
     Execute,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ActionPlan {
     pub request_id: String,
@@ -42,13 +43,13 @@ pub struct ActionPlan {
     pub confirmation: Option<Confirmation>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Confirmation {
     pub token: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Action {
     Exec(ExecAction),
@@ -57,7 +58,7 @@ pub enum Action {
     Ping,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ExecAction {
     pub argv: Vec<String>,
@@ -70,7 +71,7 @@ pub struct ExecAction {
     pub recovery: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ReadFileAction {
     pub path: String,
@@ -80,7 +81,7 @@ pub struct ReadFileAction {
     pub recovery: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct WriteFileAction {
     pub path: String,
@@ -95,7 +96,7 @@ pub fn parse_action_plan(input: &str) -> Result<ActionPlan, serde_json::Error> {
     serde_json::from_str(input)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ActionPlanResult {
     pub request_id: String,
@@ -103,21 +104,21 @@ pub struct ActionPlanResult {
     pub error: Option<RequestError>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct RequestError {
     pub code: ErrorCode,
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ActionError {
     pub code: ActionErrorCode,
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ActionResult {
     Exec(ExecResult),
@@ -126,13 +127,13 @@ pub enum ActionResult {
     Pong(PongResult),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PongResult {
     pub ok: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ExecResult {
     pub ok: bool,
@@ -144,7 +145,7 @@ pub struct ExecResult {
     pub error: Option<ActionError>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ReadFileResult {
     pub ok: bool,
@@ -153,7 +154,7 @@ pub struct ReadFileResult {
     pub error: Option<ActionError>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct WriteFileResult {
     pub ok: bool,
@@ -351,6 +352,13 @@ mod tests {
             err.message,
             "exec requires confirmation when danger is set"
         );
+    }
+
+    #[test]
+    fn json_schema_generation_includes_request_id() {
+        let schema = schemars::schema_for!(ActionPlan);
+        let value = serde_json::to_value(&schema).unwrap();
+        assert!(value.to_string().contains("\"request_id\""));
     }
 }
 

@@ -64,4 +64,16 @@ echo '{"request_id":"req-write-1","version":"0.1","mode":"execute","actions":[{"
 the daemon appends one json object per line to the audit log path you pass.
 each record includes top-level `request_id` and optional `session_id`.
 
+## actionplan json schema
+
+the repo includes a generated json schema for the actionplan protocol:
+
+- `docs/actionplan.schema.json`
+
+to regenerate it from the rust types:
+
+```bash
+cargo run -p llm-os-common --bin actionplan_schema > docs/actionplan.schema.json
+```
+
 
