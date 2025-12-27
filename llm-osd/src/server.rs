@@ -868,6 +868,86 @@ mod tests {
 
         server.abort();
     }
+
+    #[tokio::test]
+    async fn server_write_file_parent_dir_requires_confirmation() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let base = dir.path().join("base");
+        tokio::fs::create_dir_all(&base).await.unwrap();
+        tokio::fs::create_dir_all(base.join("sub")).await.unwrap();
+        let out_path = base.join("sub").join("..").join("secret.txt");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan_without = format!(
+            r#"{{
+              "request_id":"req-parentdir-write-1",
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"write_file","path":"{}","content":"x","mode":"0644","reason":"test","danger":null,"recovery":null}}]
+            }}"#,
+            out_path.to_string_lossy()
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_without.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        match &response.results[0] {
+            ActionResult::WriteFile(w) => {
+                assert!(!w.ok);
+                assert_eq!(
+                    w.error.as_ref().unwrap().code,
+                    llm_os_common::ActionErrorCode::ConfirmationRequired
+                );
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        let plan_with = format!(
+            r#"{{
+              "request_id":"req-parentdir-write-2",
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"write_file","path":"{}","content":"x","mode":"0644","reason":"test","danger":null,"recovery":null}}],
+              "confirmation":{{"token":"i-understand"}}
+            }}"#,
+            out_path.to_string_lossy()
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_with.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        match &response.results[0] {
+            ActionResult::WriteFile(w) => assert!(w.ok),
+            _ => panic!("unexpected action result type"),
+        }
+
+        assert!(tokio::fs::try_exists(&out_path).await.unwrap());
+
+        server.abort();
+    }
 }
 
 

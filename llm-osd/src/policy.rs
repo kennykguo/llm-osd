@@ -2,6 +2,7 @@
 // ABOUTME: keeps the daemon behavior deterministic and auditable under llm hallucinations.
 
 use llm_os_common::ExecAction;
+use std::path::Component;
 
 fn exec_allowed_without_confirmation(program: &str) -> bool {
     match program {
@@ -38,7 +39,11 @@ pub fn exec_requires_confirmation(exec: &ExecAction) -> bool {
 }
 
 pub fn path_requires_confirmation(path: &str) -> bool {
-    path.starts_with('/') && !path.starts_with("/tmp/")
+    let is_sensitive_abs = path.starts_with('/') && !path.starts_with("/tmp/");
+    let has_parent_dir = std::path::Path::new(path)
+        .components()
+        .any(|c| matches!(c, Component::ParentDir));
+    is_sensitive_abs || has_parent_dir
 }
 
 pub fn confirmation_is_valid(token: Option<&str>, expected_token: &str) -> bool {

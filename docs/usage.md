@@ -73,6 +73,7 @@ notes:
 - the daemon only reads up to `max_bytes` (plus one extra byte to detect truncation), so `read_file` does not load large files into memory.
 - `max_bytes` is capped by validation (mvp: 65536).
 - absolute paths outside `/tmp/` require a confirmation token.
+- paths containing `..` require a confirmation token.
 
 ## write a file
 
@@ -83,6 +84,7 @@ echo '{"request_id":"req-write-1","version":"0.1","mode":"execute","actions":[{"
 notes:
 
 - absolute paths outside `/tmp/` require a confirmation token.
+- paths containing `..` require a confirmation token.
 
 ## audit log
 
