@@ -5,6 +5,8 @@ use clap::{Parser, Subcommand};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
+use llmsh::parse_and_validate_for_send;
+
 #[derive(Debug, Parser)]
 #[command(name = "llmsh")]
 struct Args {
@@ -37,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
             json,
         } => {
             let input = read_input(file.as_deref(), json.as_deref()).await?;
+            let _ = parse_and_validate_for_send(&input)?;
             let response = send(&socket_path, &input).await?;
             print!("{response}");
         }
