@@ -37,4 +37,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 - add request correlation:
   - require `request_id` on every request and include it in every response and audit record
 
+- audit log hardening:
+  - include `request_id` and `session_id` as top-level fields in each jsonl record for easy grepping
+
 

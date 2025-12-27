@@ -8,6 +8,8 @@ use llm_os_common::{ActionPlan, ActionPlanResult};
 #[serde(deny_unknown_fields)]
 struct AuditRecord<'a> {
     ts_unix_ms: u64,
+    request_id: &'a str,
+    session_id: Option<&'a str>,
     plan: &'a ActionPlan,
     result: &'a ActionPlanResult,
 }
@@ -20,6 +22,8 @@ pub async fn append_record(
 ) -> anyhow::Result<()> {
     let record = AuditRecord {
         ts_unix_ms,
+        request_id: plan.request_id.as_str(),
+        session_id: plan.session_id.as_deref(),
         plan,
         result,
     };

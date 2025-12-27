@@ -130,6 +130,7 @@ mod tests {
         let mut stream = UnixStream::connect(&socket_path).await.unwrap();
         let plan = r#"{
           "request_id":"req-echo-1",
+          "session_id":"sess-1",
           "version":"0.1",
           "mode":"execute",
           "actions":[{"type":"exec","argv":["/bin/echo","hi"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}]
@@ -151,6 +152,22 @@ mod tests {
             }
             _ => panic!("unexpected action result type"),
         }
+
+        for _ in 0..50u32 {
+            if let Ok(meta) = tokio::fs::metadata(&audit_path).await {
+                if meta.len() > 0 {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let audit_bytes = tokio::fs::read(&audit_path).await.unwrap();
+        let audit_text = std::str::from_utf8(&audit_bytes).unwrap();
+        let first_line = audit_text.lines().find(|l| !l.trim().is_empty()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(first_line).unwrap();
+        assert_eq!(v["request_id"], "req-echo-1");
+        assert_eq!(v["session_id"], "sess-1");
 
         server.abort();
     }
