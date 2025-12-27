@@ -80,7 +80,7 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str, confirm_token: 
         return Ok(());
     }
 
-    if idle {
+    if idle && input.is_empty() {
         let _ = write_request_error(
             &mut stream,
             "unknown",
@@ -394,6 +394,52 @@ mod tests {
             response.error.as_ref().unwrap().code,
             llm_os_common::ErrorCode::ParseFailed
         );
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_allows_complete_json_without_close() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-idle-ping-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"ping"}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+
+        let mut out = Vec::new();
+        tokio::time::timeout(std::time::Duration::from_secs(2), stream.read_to_end(&mut out))
+            .await
+            .unwrap()
+            .unwrap();
+
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-idle-ping-1");
+        assert!(response.error.is_none());
+        match &response.results[0] {
+            ActionResult::Pong(p) => assert!(p.ok),
+            _ => panic!("unexpected action result type"),
+        }
 
         server.abort();
     }
