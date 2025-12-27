@@ -269,6 +269,107 @@ async fn execute_action(
             }
             actions::files::write(write).await
         }
+        Action::ServiceControl(_svc) => ActionResult::ServiceControl(llm_os_common::ServiceControlResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "service_control is not supported in execute mode".to_string(),
+            }),
+        }),
+        Action::InstallPackages(_pkgs) => ActionResult::InstallPackages(llm_os_common::InstallPackagesResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "install_packages is not supported in execute mode".to_string(),
+            }),
+        }),
+        Action::RemovePackages(_pkgs) => ActionResult::RemovePackages(llm_os_common::RemovePackagesResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "remove_packages is not supported in execute mode".to_string(),
+            }),
+        }),
+        Action::UpdateSystem(_upd) => ActionResult::UpdateSystem(llm_os_common::UpdateSystemResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "update_system is not supported in execute mode".to_string(),
+            }),
+        }),
+        Action::Observe(obs) => {
+            let base = match obs.tool {
+                llm_os_common::ObserveTool::Ps => "ps",
+                llm_os_common::ObserveTool::Top => "top",
+                llm_os_common::ObserveTool::Journalctl => "journalctl",
+                llm_os_common::ObserveTool::Perf => "perf",
+                llm_os_common::ObserveTool::Bpftrace => "bpftrace",
+                llm_os_common::ObserveTool::Other => {
+                    return ActionResult::Observe(llm_os_common::ObserveResult {
+                        ok: false,
+                        argv: vec![],
+                        exit_code: None,
+                        stdout: "".to_string(),
+                        stdout_truncated: false,
+                        stderr: "".to_string(),
+                        stderr_truncated: false,
+                        error: Some(llm_os_common::ActionError {
+                            code: llm_os_common::ActionErrorCode::PolicyDenied,
+                            message: "observe tool not supported".to_string(),
+                        }),
+                    });
+                }
+            };
+
+            let mut argv = Vec::new();
+            argv.push(base.to_string());
+            argv.extend(obs.args.iter().cloned());
+
+            let exec = llm_os_common::ExecAction {
+                argv: argv.clone(),
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: false,
+                reason: obs.reason.clone(),
+                danger: obs.danger.clone(),
+                recovery: obs.recovery.clone(),
+            };
+
+            match actions::exec::run(&exec).await {
+                ActionResult::Exec(r) => ActionResult::Observe(llm_os_common::ObserveResult {
+                    ok: r.ok,
+                    argv,
+                    exit_code: r.exit_code,
+                    stdout: r.stdout,
+                    stdout_truncated: r.stdout_truncated,
+                    stderr: r.stderr,
+                    stderr_truncated: r.stderr_truncated,
+                    error: r.error,
+                }),
+                other => other,
+            }
+        }
+        Action::CgroupApply(_cg) => ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "cgroup_apply is not supported in execute mode".to_string(),
+            }),
+        }),
+        Action::FirmwareOp(_fw) => ActionResult::FirmwareOp(llm_os_common::FirmwareOpResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "firmware_op is not supported in execute mode".to_string(),
+            }),
+        }),
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
 }
@@ -353,6 +454,242 @@ async fn plan_action(action: &Action, confirmation_token: Option<&str>, confirm_
             ActionResult::WriteFile(llm_os_common::WriteFileResult {
                 ok: true,
                 artifacts: vec![],
+                error: None,
+            })
+        }
+        Action::ServiceControl(svc) => {
+            let verb = match svc.action {
+                llm_os_common::ServiceControlVerb::Start => "start",
+                llm_os_common::ServiceControlVerb::Stop => "stop",
+                llm_os_common::ServiceControlVerb::Restart => "restart",
+                llm_os_common::ServiceControlVerb::Enable => "enable",
+                llm_os_common::ServiceControlVerb::Disable => "disable",
+                llm_os_common::ServiceControlVerb::Status => "status",
+            };
+            ActionResult::ServiceControl(llm_os_common::ServiceControlResult {
+                ok: true,
+                argv: vec!["systemctl".to_string(), verb.to_string(), svc.unit.clone()],
+                error: None,
+            })
+        }
+        Action::InstallPackages(pkgs) => {
+            let mut argv = Vec::new();
+            match pkgs.manager {
+                llm_os_common::PackageManager::Apt => {
+                    argv.push("apt-get".to_string());
+                    argv.push("install".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Dnf => {
+                    argv.push("dnf".to_string());
+                    argv.push("install".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Pacman => {
+                    argv.push("pacman".to_string());
+                    argv.push("-S".to_string());
+                    argv.push("--noconfirm".to_string());
+                }
+                llm_os_common::PackageManager::Zypper => {
+                    argv.push("zypper".to_string());
+                    argv.push("install".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Brew => {
+                    argv.push("brew".to_string());
+                    argv.push("install".to_string());
+                }
+                llm_os_common::PackageManager::Other => {
+                    return ActionResult::InstallPackages(llm_os_common::InstallPackagesResult {
+                        ok: false,
+                        argv: vec![],
+                        error: Some(llm_os_common::ActionError {
+                            code: llm_os_common::ActionErrorCode::PolicyDenied,
+                            message: "install_packages manager not supported".to_string(),
+                        }),
+                    });
+                }
+            }
+            argv.extend(pkgs.packages.iter().cloned());
+
+            ActionResult::InstallPackages(llm_os_common::InstallPackagesResult {
+                ok: true,
+                argv,
+                error: None,
+            })
+        }
+        Action::RemovePackages(pkgs) => {
+            let mut argv = Vec::new();
+            match pkgs.manager {
+                llm_os_common::PackageManager::Apt => {
+                    argv.push("apt-get".to_string());
+                    argv.push("remove".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Dnf => {
+                    argv.push("dnf".to_string());
+                    argv.push("remove".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Pacman => {
+                    argv.push("pacman".to_string());
+                    argv.push("-R".to_string());
+                    argv.push("--noconfirm".to_string());
+                }
+                llm_os_common::PackageManager::Zypper => {
+                    argv.push("zypper".to_string());
+                    argv.push("remove".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Brew => {
+                    argv.push("brew".to_string());
+                    argv.push("uninstall".to_string());
+                }
+                llm_os_common::PackageManager::Other => {
+                    return ActionResult::RemovePackages(llm_os_common::RemovePackagesResult {
+                        ok: false,
+                        argv: vec![],
+                        error: Some(llm_os_common::ActionError {
+                            code: llm_os_common::ActionErrorCode::PolicyDenied,
+                            message: "remove_packages manager not supported".to_string(),
+                        }),
+                    });
+                }
+            }
+            argv.extend(pkgs.packages.iter().cloned());
+
+            ActionResult::RemovePackages(llm_os_common::RemovePackagesResult {
+                ok: true,
+                argv,
+                error: None,
+            })
+        }
+        Action::UpdateSystem(upd) => {
+            match upd.manager {
+                llm_os_common::PackageManager::Apt => ActionResult::UpdateSystem(llm_os_common::UpdateSystemResult {
+                    ok: true,
+                    argv: vec![
+                        "apt-get".to_string(),
+                        "update".to_string(),
+                        "&&".to_string(),
+                        "apt-get".to_string(),
+                        "upgrade".to_string(),
+                        "-y".to_string(),
+                    ],
+                    error: None,
+                }),
+                _ => ActionResult::UpdateSystem(llm_os_common::UpdateSystemResult {
+                    ok: false,
+                    argv: vec![],
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::PolicyDenied,
+                        message: "update_system manager not supported".to_string(),
+                    }),
+                }),
+            }
+        }
+        Action::Observe(obs) => {
+            let base = match obs.tool {
+                llm_os_common::ObserveTool::Ps => "ps",
+                llm_os_common::ObserveTool::Top => "top",
+                llm_os_common::ObserveTool::Journalctl => "journalctl",
+                llm_os_common::ObserveTool::Perf => "perf",
+                llm_os_common::ObserveTool::Bpftrace => "bpftrace",
+                llm_os_common::ObserveTool::Other => {
+                    return ActionResult::Observe(llm_os_common::ObserveResult {
+                        ok: false,
+                        argv: vec![],
+                        exit_code: None,
+                        stdout: "".to_string(),
+                        stdout_truncated: false,
+                        stderr: "".to_string(),
+                        stderr_truncated: false,
+                        error: Some(llm_os_common::ActionError {
+                            code: llm_os_common::ActionErrorCode::PolicyDenied,
+                            message: "observe tool not supported".to_string(),
+                        }),
+                    });
+                }
+            };
+
+            let mut argv = Vec::new();
+            argv.push(base.to_string());
+            argv.extend(obs.args.iter().cloned());
+
+            ActionResult::Observe(llm_os_common::ObserveResult {
+                ok: true,
+                argv,
+                exit_code: None,
+                stdout: "".to_string(),
+                stdout_truncated: false,
+                stderr: "".to_string(),
+                stderr_truncated: false,
+                error: None,
+            })
+        }
+        Action::CgroupApply(cg) => {
+            let mut argv = Vec::new();
+            argv.push("systemd-run".to_string());
+            argv.push("--scope".to_string());
+            if let Some(w) = cg.cpu_weight {
+                argv.push("-p".to_string());
+                argv.push(format!("CPUWeight={w}"));
+            }
+            if let Some(m) = cg.mem_max_bytes {
+                argv.push("-p".to_string());
+                argv.push(format!("MemoryMax={m}"));
+            }
+            if let Some(pid) = cg.pid {
+                argv.push(format!("--pid={pid}"));
+                return ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
+                    ok: true,
+                    argv,
+                    error: None,
+                });
+            }
+            if let Some(unit) = &cg.unit {
+                argv.push(format!("--unit={unit}"));
+                return ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
+                    ok: true,
+                    argv,
+                    error: None,
+                });
+            }
+            ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
+                ok: false,
+                argv: vec![],
+                error: Some(llm_os_common::ActionError {
+                    code: llm_os_common::ActionErrorCode::PolicyDenied,
+                    message: "cgroup_apply target is invalid".to_string(),
+                }),
+            })
+        }
+        Action::FirmwareOp(fw) => {
+            let argv = match fw.op {
+                llm_os_common::FirmwareOp::Inventory => vec!["dmidecode".to_string()],
+                llm_os_common::FirmwareOp::FwupdUpdate => vec!["fwupdmgr".to_string(), "update".to_string()],
+                llm_os_common::FirmwareOp::UefiVarRead => {
+                    let name = fw.uefi_var_name.as_deref().unwrap_or("");
+                    if name.trim().is_empty() {
+                        return ActionResult::FirmwareOp(llm_os_common::FirmwareOpResult {
+                            ok: false,
+                            argv: vec![],
+                            error: Some(llm_os_common::ActionError {
+                                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                                message: "firmware_op target is invalid".to_string(),
+                            }),
+                        });
+                    }
+                    vec![
+                        "cat".to_string(),
+                        format!("/sys/firmware/efi/efivars/{name}"),
+                    ]
+                }
+            };
+
+            ActionResult::FirmwareOp(llm_os_common::FirmwareOpResult {
+                ok: true,
+                argv,
                 error: None,
             })
         }
@@ -529,6 +866,414 @@ mod tests {
         }
 
         assert!(!out_path.exists());
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_service_control_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-svc-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"service_control","action":"status","unit":"ssh.service","reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-svc-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::ServiceControl(r) => {
+                assert!(r.ok);
+                assert_eq!(r.argv, vec!["systemctl", "status", "ssh.service"]);
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_install_packages_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-pkg-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"install_packages","manager":"apt","packages":["curl","git"],"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-pkg-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::InstallPackages(r) => {
+                assert!(r.ok);
+                assert_eq!(
+                    r.argv,
+                    vec![
+                        "apt-get",
+                        "install",
+                        "-y",
+                        "curl",
+                        "git"
+                    ]
+                );
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_remove_packages_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-rmpkg-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"remove_packages","manager":"apt","packages":["curl","git"],"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-rmpkg-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::RemovePackages(r) => {
+                assert!(r.ok);
+                assert_eq!(r.argv, vec!["apt-get", "remove", "-y", "curl", "git"]);
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_update_system_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-upd-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"update_system","manager":"apt","reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-upd-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::UpdateSystem(r) => {
+                assert!(r.ok);
+                assert_eq!(
+                    r.argv,
+                    vec!["apt-get", "update", "&&", "apt-get", "upgrade", "-y"]
+                );
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_observe_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-obs-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"observe","tool":"ps","args":["aux"],"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-obs-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::Observe(r) => {
+                assert!(r.ok);
+                assert_eq!(r.argv, vec!["ps", "aux"]);
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_execute_observe_returns_stdout() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-exec-obs-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"observe","tool":"ps","args":["aux"],"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-exec-obs-1");
+        assert!(response.error.is_none());
+        assert!(response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::Observe(r) => {
+                assert!(r.ok);
+                assert_eq!(r.exit_code, Some(0));
+                assert!(!r.stdout.is_empty());
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_cgroup_apply_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-cg-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"cgroup_apply","pid":1234,"unit":null,"cpu_weight":100,"mem_max_bytes":1048576,"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-cg-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::CgroupApply(r) => {
+                assert!(r.ok);
+                assert_eq!(
+                    r.argv,
+                    vec![
+                        "systemd-run",
+                        "--scope",
+                        "-p",
+                        "CPUWeight=100",
+                        "-p",
+                        "MemoryMax=1048576",
+                        "--pid=1234"
+                    ]
+                );
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_firmware_op_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-fw-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"firmware_op","op":"inventory","uefi_var_name":null,"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-fw-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::FirmwareOp(r) => {
+                assert!(r.ok);
+                assert_eq!(r.argv, vec!["dmidecode"]);
+            }
+            _ => panic!("unexpected action result type"),
+        }
 
         server.abort();
     }
@@ -1107,6 +1852,87 @@ mod tests {
         }
         let audit_text = tokio::fs::read_to_string(&audit_path).await.unwrap();
         assert!(!audit_text.contains(secret));
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn audit_redacts_exec_and_observe_stdout() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let secret = "super-secret-stdout";
+
+        let plan_exec = format!(
+            r#"{{
+              "request_id":"req-exec-secret-1",
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"exec","argv":["/usr/bin/printenv","SECRET"],"cwd":null,"env":{{"SECRET":"{}"}},"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}]
+            }}"#,
+            secret
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_exec.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert!(response.error.is_none());
+
+        let plan_observe = r#"{
+          "request_id":"req-observe-ps-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"observe","tool":"ps","args":["aux"],"reason":"test","danger":null,"recovery":null}]
+        }"#;
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_observe.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert!(response.error.is_none());
+
+        for _ in 0..50u32 {
+            if let Ok(meta) = tokio::fs::metadata(&audit_path).await {
+                if meta.len() > 0 {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let audit_text = tokio::fs::read_to_string(&audit_path).await.unwrap();
+        assert!(!audit_text.contains(secret));
+
+        let exec_line = audit_text
+            .lines()
+            .find(|l| l.contains(r#""request_id":"req-exec-secret-1""#))
+            .unwrap();
+        let exec_v: serde_json::Value = serde_json::from_str(exec_line).unwrap();
+        assert_eq!(exec_v["result"]["results"][0]["stdout"], "[redacted]");
+
+        let observe_line = audit_text
+            .lines()
+            .find(|l| l.contains(r#""request_id":"req-observe-ps-1""#))
+            .unwrap();
+        let observe_v: serde_json::Value = serde_json::from_str(observe_line).unwrap();
+        assert_eq!(observe_v["result"]["results"][0]["stdout"], "[redacted]");
 
         server.abort();
     }

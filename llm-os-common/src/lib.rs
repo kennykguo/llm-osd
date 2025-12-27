@@ -55,7 +55,126 @@ pub enum Action {
     Exec(ExecAction),
     ReadFile(ReadFileAction),
     WriteFile(WriteFileAction),
+    ServiceControl(ServiceControlAction),
+    InstallPackages(InstallPackagesAction),
+    RemovePackages(RemovePackagesAction),
+    UpdateSystem(UpdateSystemAction),
+    Observe(ObserveAction),
+    CgroupApply(CgroupApplyAction),
+    FirmwareOp(FirmwareOpAction),
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FirmwareOp {
+    Inventory,
+    FwupdUpdate,
+    UefiVarRead,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct FirmwareOpAction {
+    pub op: FirmwareOp,
+    pub uefi_var_name: Option<String>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CgroupApplyAction {
+    pub pid: Option<u32>,
+    pub unit: Option<String>,
+    pub cpu_weight: Option<u64>,
+    pub mem_max_bytes: Option<u64>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObserveTool {
+    Ps,
+    Top,
+    Journalctl,
+    Perf,
+    Bpftrace,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ObserveAction {
+    pub tool: ObserveTool,
+    pub args: Vec<String>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSystemAction {
+    pub manager: PackageManager,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemovePackagesAction {
+    pub manager: PackageManager,
+    pub packages: Vec<String>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PackageManager {
+    Apt,
+    Dnf,
+    Pacman,
+    Zypper,
+    Brew,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct InstallPackagesAction {
+    pub manager: PackageManager,
+    pub packages: Vec<String>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceControlVerb {
+    Start,
+    Stop,
+    Restart,
+    Enable,
+    Disable,
+    Status,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceControlAction {
+    pub action: ServiceControlVerb,
+    pub unit: String,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -125,7 +244,75 @@ pub enum ActionResult {
     Exec(ExecResult),
     ReadFile(ReadFileResult),
     WriteFile(WriteFileResult),
+    ServiceControl(ServiceControlResult),
+    InstallPackages(InstallPackagesResult),
+    RemovePackages(RemovePackagesResult),
+    UpdateSystem(UpdateSystemResult),
+    Observe(ObserveResult),
+    CgroupApply(CgroupApplyResult),
+    FirmwareOp(FirmwareOpResult),
     Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct FirmwareOpResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CgroupApplyResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ObserveResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stdout_truncated: bool,
+    pub stderr: String,
+    pub stderr_truncated: bool,
+    pub error: Option<ActionError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSystemResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemovePackagesResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct InstallPackagesResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceControlResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -184,6 +371,12 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_VERSION_BYTES: usize = 128;
     const MAX_MODE_BYTES: usize = 128;
     const MAX_EXEC_TIMEOUT_SEC: u64 = 60;
+    const MAX_SYSTEMD_UNIT_BYTES: usize = 256;
+    const MAX_PACKAGE_NAME_BYTES: usize = 128;
+    const MAX_PACKAGES: usize = 128;
+    const MAX_OBSERVE_ARGS: usize = 64;
+    const MAX_OBSERVE_ARG_BYTES: usize = 2048;
+    const MAX_UEFI_VAR_NAME_BYTES: usize = 256;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -439,6 +632,209 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
 
                 if write.danger.is_some() {
                     require_confirmation(plan, "write_file requires confirmation when danger is set")?;
+                }
+            }
+            Action::ServiceControl(svc) => {
+                if svc.unit.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "service_control.unit must be non-empty".to_string(),
+                    });
+                }
+                if svc.unit.as_bytes().len() > MAX_SYSTEMD_UNIT_BYTES {
+                    return Err(ValidationError {
+                        message: "service_control.unit is too long".to_string(),
+                    });
+                }
+                if svc.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "service_control.reason must be non-empty".to_string(),
+                    });
+                }
+                if svc.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "service_control.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::InstallPackages(pkgs) => {
+                if pkgs.packages.is_empty() {
+                    return Err(ValidationError {
+                        message: "install_packages.packages must be non-empty".to_string(),
+                    });
+                }
+                if pkgs.packages.len() > MAX_PACKAGES {
+                    return Err(ValidationError {
+                        message: "install_packages.packages has too many entries".to_string(),
+                    });
+                }
+                for pkg in &pkgs.packages {
+                    if pkg.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "install_packages.packages entries must be non-empty".to_string(),
+                        });
+                    }
+                    if pkg.as_bytes().len() > MAX_PACKAGE_NAME_BYTES {
+                        return Err(ValidationError {
+                            message: "install_packages.packages entry is too long".to_string(),
+                        });
+                    }
+                }
+                if pkgs.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "install_packages.reason must be non-empty".to_string(),
+                    });
+                }
+                if pkgs.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "install_packages.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::RemovePackages(pkgs) => {
+                if pkgs.packages.is_empty() {
+                    return Err(ValidationError {
+                        message: "remove_packages.packages must be non-empty".to_string(),
+                    });
+                }
+                if pkgs.packages.len() > MAX_PACKAGES {
+                    return Err(ValidationError {
+                        message: "remove_packages.packages has too many entries".to_string(),
+                    });
+                }
+                for pkg in &pkgs.packages {
+                    if pkg.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "remove_packages.packages entries must be non-empty".to_string(),
+                        });
+                    }
+                    if pkg.as_bytes().len() > MAX_PACKAGE_NAME_BYTES {
+                        return Err(ValidationError {
+                            message: "remove_packages.packages entry is too long".to_string(),
+                        });
+                    }
+                }
+                if pkgs.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "remove_packages.reason must be non-empty".to_string(),
+                    });
+                }
+                if pkgs.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "remove_packages.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::UpdateSystem(upd) => {
+                if upd.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "update_system.reason must be non-empty".to_string(),
+                    });
+                }
+                if upd.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "update_system.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::Observe(obs) => {
+                if obs.args.len() > MAX_OBSERVE_ARGS {
+                    return Err(ValidationError {
+                        message: "observe.args has too many entries".to_string(),
+                    });
+                }
+                for arg in &obs.args {
+                    if arg.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "observe.args entries must be non-empty".to_string(),
+                        });
+                    }
+                    if arg.as_bytes().len() > MAX_OBSERVE_ARG_BYTES {
+                        return Err(ValidationError {
+                            message: "observe.args entry is too long".to_string(),
+                        });
+                    }
+                }
+                if obs.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "observe.reason must be non-empty".to_string(),
+                    });
+                }
+                if obs.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "observe.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::CgroupApply(cg) => {
+                if cg.pid.is_none() && cg.unit.is_none() {
+                    return Err(ValidationError {
+                        message: "cgroup_apply requires pid or unit".to_string(),
+                    });
+                }
+                if cg.pid.is_some() && cg.unit.is_some() {
+                    return Err(ValidationError {
+                        message: "cgroup_apply must not set both pid and unit".to_string(),
+                    });
+                }
+                if let Some(unit) = &cg.unit {
+                    if unit.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "cgroup_apply.unit must be non-empty when provided".to_string(),
+                        });
+                    }
+                    if unit.as_bytes().len() > MAX_SYSTEMD_UNIT_BYTES {
+                        return Err(ValidationError {
+                            message: "cgroup_apply.unit is too long".to_string(),
+                        });
+                    }
+                }
+                if cg.cpu_weight.is_none() && cg.mem_max_bytes.is_none() {
+                    return Err(ValidationError {
+                        message: "cgroup_apply requires at least one setting".to_string(),
+                    });
+                }
+                if cg.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "cgroup_apply.reason must be non-empty".to_string(),
+                    });
+                }
+                if cg.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "cgroup_apply.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::FirmwareOp(fw) => {
+                if fw.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "firmware_op.reason must be non-empty".to_string(),
+                    });
+                }
+                if fw.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "firmware_op.reason is too long".to_string(),
+                    });
+                }
+                match fw.op {
+                    FirmwareOp::UefiVarRead => {
+                        let name = fw.uefi_var_name.as_deref().unwrap_or("");
+                        if name.trim().is_empty() {
+                            return Err(ValidationError {
+                                message: "firmware_op.uefi_var_name must be set for uefi_var_read".to_string(),
+                            });
+                        }
+                        if name.contains('/') || name.contains('\\') || name.contains("..") {
+                            return Err(ValidationError {
+                                message: "firmware_op.uefi_var_name must be a filename".to_string(),
+                            });
+                        }
+                        if name.as_bytes().len() > MAX_UEFI_VAR_NAME_BYTES {
+                            return Err(ValidationError {
+                                message: "firmware_op.uefi_var_name is too long".to_string(),
+                            });
+                        }
+                    }
+                    FirmwareOp::Inventory | FirmwareOp::FwupdUpdate => {}
                 }
             }
             Action::Ping => {}

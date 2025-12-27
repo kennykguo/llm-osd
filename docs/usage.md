@@ -27,6 +27,68 @@ cargo run -p llmsh -- ping --socket-path /tmp/llm-osd.sock --session-id sess-1
 the response is json and includes `request_id`, `results`, and optional `error`.
 the response also includes `executed` so callers can distinguish `plan_only` from `execute`.
 
+## service_control (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-svc-1","version":"0.1","mode":"plan_only","actions":[{"type":"service_control","action":"status","unit":"ssh.service","reason":"inspect service status","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
+## install_packages (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-pkg-1","version":"0.1","mode":"plan_only","actions":[{"type":"install_packages","manager":"apt","packages":["curl","git"],"reason":"install tools","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
+## remove_packages (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-rmpkg-1","version":"0.1","mode":"plan_only","actions":[{"type":"remove_packages","manager":"apt","packages":["curl","git"],"reason":"remove tools","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
+## update_system (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-upd-1","version":"0.1","mode":"plan_only","actions":[{"type":"update_system","manager":"apt","reason":"upgrade system packages","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
+## observe (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-obs-1","version":"0.1","mode":"plan_only","actions":[{"type":"observe","tool":"ps","args":["aux"],"reason":"inspect processes","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
+observe also supports `mode=execute` and returns stdout/stderr like `exec`:
+
+```bash
+echo '{"request_id":"req-exec-obs-1","version":"0.1","mode":"execute","actions":[{"type":"observe","tool":"ps","args":["aux"],"reason":"inspect processes","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
+## cgroup_apply (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-cg-1","version":"0.1","mode":"plan_only","actions":[{"type":"cgroup_apply","pid":1234,"unit":null,"cpu_weight":100,"mem_max_bytes":1048576,"reason":"apply cgroup settings","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
+## firmware_op (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-fw-1","version":"0.1","mode":"plan_only","actions":[{"type":"firmware_op","op":"inventory","uefi_var_name":null,"reason":"inventory firmware details","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
 ## send a plan from stdin
 
 ```bash
@@ -98,7 +160,7 @@ notes:
 
 the daemon appends one json object per line to the audit log path you pass.
 each record includes top-level `request_id` and optional `session_id`.
-audit redacts confirmation tokens, exec env values, and write_file content.
+audit redacts confirmation tokens, exec env values, write_file content, read_file content, and action stdout/stderr.
 
 ## actionplan json schema
 

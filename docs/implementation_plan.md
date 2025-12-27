@@ -9,6 +9,7 @@ deliver a minimal `llmsh` + `llm-osd` pair where:
 - unknown fields and invalid values are rejected to harden against llm hallucinations.
 - results are returned as structured json (typed per action).
 - include a `ping` action for deterministic health checks without exec.
+- `plan_only` mode is supported for safe, no-side-effect planning; responses include `executed` so callers can distinguish planning vs execution.
 
 ## architecture options (required comparison)
 
@@ -32,6 +33,20 @@ an action plan is a single json document:
 - `mode`: `plan_only` or `execute`
 - `actions`: ordered list of actions
 
+supported actions (mvp):
+
+- `ping`
+- `exec`
+- `read_file`
+- `write_file`
+- `service_control` (plan_only only)
+- `install_packages` (plan_only only)
+- `remove_packages` (plan_only only)
+- `update_system` (plan_only only)
+- `observe` (plan_only only)
+- `cgroup_apply` (plan_only only)
+- `firmware_op` (plan_only only)
+
 ### hallucination hardening
 
 - schema parsing uses `deny_unknown_fields` everywhere
@@ -51,9 +66,12 @@ an action plan is a single json document:
 
 ### results
 
-for each action, return:
+response-level fields:
 
 - `executed`: boolean (false for `plan_only`, true for `execute`)
+
+for each action, return:
+
 - `ok`: boolean
 - `stdout` / `stderr`: strings (with explicit truncation marker if truncated)
 - `stdout_truncated` / `stderr_truncated`: booleans
@@ -95,7 +113,7 @@ every request/action is logged with:
 
 notes:
 
-- audit redacts confirmation tokens, exec env values, and write_file content
+- audit redacts confirmation tokens, exec env values, write_file content, read_file content, and action stdout/stderr
 
 ## code structure for extensibility
 
