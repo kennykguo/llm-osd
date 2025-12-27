@@ -20,48 +20,6 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 
 ## next steps
 
-- restore `docs/implementation_plan.md` with the architecture + mvp milestones
-- define `llm-os-common` response types and error model (typed results, truncation markers)
-- implement `llm-osd` unix socket server that:
-  - accepts an action plan json
-  - validates it and applies policy
-  - executes allowlisted actions (`exec`, `read_file`, `write_file`)
-  - returns structured results and writes an audit log
-- implement `llmsh` cli client that:
-  - sends a plan to `llm-osd`
-  - prints results deterministically (json)
-
-- add a confirmation milestone:
-  - daemon blocks policy-sensitive actions unless `confirmation.token` matches the expected value
-
-- add request correlation:
-  - require `request_id` on every request and include it in every response and audit record
-
-- audit log hardening:
-  - include `request_id` and `session_id` as top-level fields in each jsonl record for easy grepping
-
-- exec allowlist:
-  - only allowlisted programs run without confirmation (mvp: `/bin/echo`)
-  - everything else requires `confirmation.token`
-  - `llm-osd` confirmation token is configurable via `--confirm-token`
-
-- request size limit:
-  - daemon rejects requests larger than 64kiB with a deterministic json error response
-
-- deterministic request errors:
-  - daemon returns json errors for parse, validation, and mode failures instead of dropping the connection
-  - daemon uses request-level error codes for deterministic client branching
-
-- deterministic per-action errors:
-  - action results use typed error codes (policy denied vs confirmation required vs exec failed vs io errors)
-
-- client-side validation:
-  - llmsh validates action plans locally before sending them to the daemon (including mode=execute)
-
-- ping:
-  - add `ping` action for deterministic daemon health checks without exec
-
-- usage doc:
-  - added `docs/usage.md` with exact commands to run the daemon and exercise ping/exec/read/write safely
+none right now; mvp core is implemented. see `docs/usage.md` for how to run it.
 
 
