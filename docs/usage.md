@@ -78,6 +78,7 @@ echo '{"request_id":"req-write-1","version":"0.1","mode":"execute","actions":[{"
 
 the daemon appends one json object per line to the audit log path you pass.
 each record includes top-level `request_id` and optional `session_id`.
+audit redacts confirmation tokens, exec env values, and write_file content.
 
 ## actionplan json schema
 

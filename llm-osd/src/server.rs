@@ -713,6 +713,62 @@ mod tests {
 
         server.abort();
     }
+
+    #[tokio::test]
+    async fn audit_redacts_write_file_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+        let out_path = dir.path().join("secret.txt");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let secret = "super-secret-token";
+        let plan = format!(
+            r#"{{
+              "request_id":"req-write-secret-1",
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"write_file","path":"{}","content":"{}","mode":"0644","reason":"test","danger":null,"recovery":null}}]
+            }}"#,
+            out_path.to_string_lossy(),
+            secret
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert!(response.error.is_none());
+        assert_eq!(response.results.len(), 1);
+
+        for _ in 0..50u32 {
+            if let Ok(meta) = tokio::fs::metadata(&audit_path).await {
+                if meta.len() > 0 {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let audit_text = tokio::fs::read_to_string(&audit_path).await.unwrap();
+        assert!(!audit_text.contains(secret));
+
+        server.abort();
+    }
 }
 
 

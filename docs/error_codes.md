@@ -15,6 +15,7 @@ these appear inside the per-action result variant:
 
 - `policy_denied`: daemon policy denies this action/program outright
 - `confirmation_required`: daemon requires a valid confirmation token for this action/program
+- note: the confirmation token is not echoed back in error messages; use the configured token out-of-band.
 - `exec_failed`: exec could not be started or exited abnormally before producing a normal result
 - `exec_timed_out`: exec exceeded `timeout_sec`
 - `read_failed`: read_file failed
