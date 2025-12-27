@@ -60,4 +60,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 - ping:
   - add `ping` action for deterministic daemon health checks without exec
 
+- usage doc:
+  - added `docs/usage.md` with exact commands to run the daemon and exercise ping/exec/read/write safely
+
 
