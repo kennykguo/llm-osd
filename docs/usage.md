@@ -35,6 +35,14 @@ this returns `executed=false` and a structured result describing what would run.
 echo '{"request_id":"req-plan-svc-1","version":"0.1","mode":"plan_only","actions":[{"type":"service_control","action":"status","unit":"ssh.service","reason":"inspect service status","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
 ```
 
+## install_packages (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-pkg-1","version":"0.1","mode":"plan_only","actions":[{"type":"install_packages","manager":"apt","packages":["curl","git"],"reason":"install tools","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
 ## send a plan from stdin
 
 ```bash

@@ -56,7 +56,29 @@ pub enum Action {
     ReadFile(ReadFileAction),
     WriteFile(WriteFileAction),
     ServiceControl(ServiceControlAction),
+    InstallPackages(InstallPackagesAction),
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PackageManager {
+    Apt,
+    Dnf,
+    Pacman,
+    Zypper,
+    Brew,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct InstallPackagesAction {
+    pub manager: PackageManager,
+    pub packages: Vec<String>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -148,7 +170,16 @@ pub enum ActionResult {
     ReadFile(ReadFileResult),
     WriteFile(WriteFileResult),
     ServiceControl(ServiceControlResult),
+    InstallPackages(InstallPackagesResult),
     Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct InstallPackagesResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -216,6 +247,8 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_MODE_BYTES: usize = 128;
     const MAX_EXEC_TIMEOUT_SEC: u64 = 60;
     const MAX_SYSTEMD_UNIT_BYTES: usize = 256;
+    const MAX_PACKAGE_NAME_BYTES: usize = 128;
+    const MAX_PACKAGES: usize = 128;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -492,6 +525,40 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if svc.reason.as_bytes().len() > MAX_REASON_BYTES {
                     return Err(ValidationError {
                         message: "service_control.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::InstallPackages(pkgs) => {
+                if pkgs.packages.is_empty() {
+                    return Err(ValidationError {
+                        message: "install_packages.packages must be non-empty".to_string(),
+                    });
+                }
+                if pkgs.packages.len() > MAX_PACKAGES {
+                    return Err(ValidationError {
+                        message: "install_packages.packages has too many entries".to_string(),
+                    });
+                }
+                for pkg in &pkgs.packages {
+                    if pkg.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "install_packages.packages entries must be non-empty".to_string(),
+                        });
+                    }
+                    if pkg.as_bytes().len() > MAX_PACKAGE_NAME_BYTES {
+                        return Err(ValidationError {
+                            message: "install_packages.packages entry is too long".to_string(),
+                        });
+                    }
+                }
+                if pkgs.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "install_packages.reason must be non-empty".to_string(),
+                    });
+                }
+                if pkgs.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "install_packages.reason is too long".to_string(),
                     });
                 }
             }
