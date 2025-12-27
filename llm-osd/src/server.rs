@@ -189,6 +189,7 @@ async fn execute_action(action: &Action, confirmation_token: Option<&str>) -> Ac
         }
         Action::ReadFile(read) => actions::files::read(read).await,
         Action::WriteFile(write) => actions::files::write(write).await,
+        Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
 }
 
@@ -255,6 +256,50 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(first_line).unwrap();
         assert_eq!(v["request_id"], "req-echo-1");
         assert_eq!(v["session_id"], "sess-1");
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_ping_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-ping-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"ping"}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-ping-1");
+        assert!(response.error.is_none());
+        assert_eq!(response.results.len(), 1);
+
+        match &response.results[0] {
+            ActionResult::Pong(p) => assert!(p.ok),
+            _ => panic!("unexpected action result type"),
+        }
 
         server.abort();
     }

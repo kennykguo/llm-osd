@@ -8,6 +8,7 @@ deliver a minimal `llmsh` + `llm-osd` pair where:
 - `llm-osd` (privileged daemon) validates, audits, and executes a small allowlisted subset of actions.
 - unknown fields and invalid values are rejected to harden against llm hallucinations.
 - results are returned as structured json (typed per action).
+- include a `ping` action for deterministic health checks without exec.
 
 ## architecture options (required comparison)
 

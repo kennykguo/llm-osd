@@ -54,6 +54,7 @@ pub enum Action {
     Exec(ExecAction),
     ReadFile(ReadFileAction),
     WriteFile(WriteFileAction),
+    Ping,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -122,6 +123,13 @@ pub enum ActionResult {
     Exec(ExecResult),
     ReadFile(ReadFileResult),
     WriteFile(WriteFileResult),
+    Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PongResult {
+    pub ok: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -251,6 +259,7 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                     require_confirmation(plan, "write_file requires confirmation when danger is set")?;
                 }
             }
+            Action::Ping => {}
         }
     }
 

@@ -57,4 +57,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 - client-side validation:
   - llmsh validates action plans locally before sending them to the daemon (including mode=execute)
 
+- ping:
+  - add `ping` action for deterministic daemon health checks without exec
+
 

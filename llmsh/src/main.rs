@@ -26,6 +26,10 @@ enum Command {
         #[arg(long)]
         json: Option<String>,
     },
+    Ping {
+        #[arg(long, default_value = "/tmp/llm-osd.sock")]
+        socket_path: String,
+    },
 }
 
 #[tokio::main]
@@ -41,6 +45,17 @@ async fn main() -> anyhow::Result<()> {
             let input = read_input(file.as_deref(), json.as_deref()).await?;
             let _ = parse_and_validate_for_send(&input)?;
             let response = send(&socket_path, &input).await?;
+            print!("{response}");
+        }
+        Command::Ping { socket_path } => {
+            let plan = r#"{
+  "request_id":"req-ping-cli-1",
+  "version":"0.1",
+  "mode":"execute",
+  "actions":[{"type":"ping"}]
+}"#;
+            let _ = parse_and_validate_for_send(plan)?;
+            let response = send(&socket_path, plan).await?;
             print!("{response}");
         }
     }
