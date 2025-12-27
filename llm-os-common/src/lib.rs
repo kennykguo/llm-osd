@@ -57,7 +57,18 @@ pub enum Action {
     WriteFile(WriteFileAction),
     ServiceControl(ServiceControlAction),
     InstallPackages(InstallPackagesAction),
+    RemovePackages(RemovePackagesAction),
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemovePackagesAction {
+    pub manager: PackageManager,
+    pub packages: Vec<String>,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -171,7 +182,16 @@ pub enum ActionResult {
     WriteFile(WriteFileResult),
     ServiceControl(ServiceControlResult),
     InstallPackages(InstallPackagesResult),
+    RemovePackages(RemovePackagesResult),
     Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RemovePackagesResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -559,6 +579,40 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if pkgs.reason.as_bytes().len() > MAX_REASON_BYTES {
                     return Err(ValidationError {
                         message: "install_packages.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::RemovePackages(pkgs) => {
+                if pkgs.packages.is_empty() {
+                    return Err(ValidationError {
+                        message: "remove_packages.packages must be non-empty".to_string(),
+                    });
+                }
+                if pkgs.packages.len() > MAX_PACKAGES {
+                    return Err(ValidationError {
+                        message: "remove_packages.packages has too many entries".to_string(),
+                    });
+                }
+                for pkg in &pkgs.packages {
+                    if pkg.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "remove_packages.packages entries must be non-empty".to_string(),
+                        });
+                    }
+                    if pkg.as_bytes().len() > MAX_PACKAGE_NAME_BYTES {
+                        return Err(ValidationError {
+                            message: "remove_packages.packages entry is too long".to_string(),
+                        });
+                    }
+                }
+                if pkgs.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "remove_packages.reason must be non-empty".to_string(),
+                    });
+                }
+                if pkgs.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "remove_packages.reason is too long".to_string(),
                     });
                 }
             }

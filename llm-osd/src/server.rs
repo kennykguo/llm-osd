@@ -285,6 +285,14 @@ async fn execute_action(
                 message: "install_packages is not supported in execute mode".to_string(),
             }),
         }),
+        Action::RemovePackages(_pkgs) => ActionResult::RemovePackages(llm_os_common::RemovePackagesResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "remove_packages is not supported in execute mode".to_string(),
+            }),
+        }),
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
 }
@@ -428,6 +436,52 @@ async fn plan_action(action: &Action, confirmation_token: Option<&str>, confirm_
             argv.extend(pkgs.packages.iter().cloned());
 
             ActionResult::InstallPackages(llm_os_common::InstallPackagesResult {
+                ok: true,
+                argv,
+                error: None,
+            })
+        }
+        Action::RemovePackages(pkgs) => {
+            let mut argv = Vec::new();
+            match pkgs.manager {
+                llm_os_common::PackageManager::Apt => {
+                    argv.push("apt-get".to_string());
+                    argv.push("remove".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Dnf => {
+                    argv.push("dnf".to_string());
+                    argv.push("remove".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Pacman => {
+                    argv.push("pacman".to_string());
+                    argv.push("-R".to_string());
+                    argv.push("--noconfirm".to_string());
+                }
+                llm_os_common::PackageManager::Zypper => {
+                    argv.push("zypper".to_string());
+                    argv.push("remove".to_string());
+                    argv.push("-y".to_string());
+                }
+                llm_os_common::PackageManager::Brew => {
+                    argv.push("brew".to_string());
+                    argv.push("uninstall".to_string());
+                }
+                llm_os_common::PackageManager::Other => {
+                    return ActionResult::RemovePackages(llm_os_common::RemovePackagesResult {
+                        ok: false,
+                        argv: vec![],
+                        error: Some(llm_os_common::ActionError {
+                            code: llm_os_common::ActionErrorCode::PolicyDenied,
+                            message: "remove_packages manager not supported".to_string(),
+                        }),
+                    });
+                }
+            }
+            argv.extend(pkgs.packages.iter().cloned());
+
+            ActionResult::RemovePackages(llm_os_common::RemovePackagesResult {
                 ok: true,
                 argv,
                 error: None,
@@ -708,6 +762,54 @@ mod tests {
                         "git"
                     ]
                 );
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_remove_packages_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-rmpkg-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"remove_packages","manager":"apt","packages":["curl","git"],"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-rmpkg-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::RemovePackages(r) => {
+                assert!(r.ok);
+                assert_eq!(r.argv, vec!["apt-get", "remove", "-y", "curl", "git"]);
             }
             _ => panic!("unexpected action result type"),
         }

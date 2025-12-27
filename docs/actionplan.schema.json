@@ -271,6 +271,47 @@
         {
           "type": "object",
           "required": [
+            "manager",
+            "packages",
+            "reason",
+            "type"
+          ],
+          "properties": {
+            "danger": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "manager": {
+              "$ref": "#/definitions/PackageManager"
+            },
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "remove_packages"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "type"
           ],
           "properties": {
