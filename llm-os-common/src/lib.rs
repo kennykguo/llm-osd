@@ -30,9 +30,13 @@ pub enum Action {
 #[serde(deny_unknown_fields)]
 pub struct ExecAction {
     pub argv: Vec<String>,
+    pub cwd: Option<String>,
+    pub env: Option<std::collections::BTreeMap<String, String>>,
     pub timeout_sec: u64,
     pub as_root: bool,
     pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -41,6 +45,8 @@ pub struct ReadFileAction {
     pub path: String,
     pub max_bytes: u64,
     pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -50,10 +56,53 @@ pub struct WriteFileAction {
     pub content: String,
     pub mode: String,
     pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 pub fn parse_action_plan(input: &str) -> Result<ActionPlan, serde_json::Error> {
     serde_json::from_str(input)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ActionPlanResult {
+    pub results: Vec<ActionResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ActionResult {
+    Exec(ExecResult),
+    ReadFile(ReadFileResult),
+    WriteFile(WriteFileResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ExecResult {
+    pub ok: bool,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReadFileResult {
+    pub ok: bool,
+    pub content_base64: Option<String>,
+    pub truncated: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WriteFileResult {
+    pub ok: bool,
+    pub artifacts: Vec<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +124,13 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                     return Err(ValidationError {
                         message: "exec.argv must be non-empty".to_string(),
                     });
+                }
+                if let Some(cwd) = &exec.cwd {
+                    if cwd.trim().is_empty() {
+                        return Err(ValidationError {
+                            message: "exec.cwd must be non-empty when provided".to_string(),
+                        });
+                    }
                 }
                 if exec.timeout_sec == 0 {
                     return Err(ValidationError {
@@ -161,9 +217,13 @@ mod tests {
             mode: Mode::Execute,
             actions: vec![Action::Exec(ExecAction {
                 argv: vec![],
+                cwd: None,
+                env: None,
                 timeout_sec: 5,
                 as_root: false,
                 reason: "test".to_string(),
+                danger: None,
+                recovery: None,
             })],
         };
 
