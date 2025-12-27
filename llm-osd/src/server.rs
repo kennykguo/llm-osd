@@ -60,11 +60,27 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str) -> anyhow::Resu
     }
 
     let input_str = String::from_utf8_lossy(&input);
-    let plan = parse_action_plan(&input_str)?;
-    validate_action_plan(&plan).map_err(|e| anyhow::anyhow!(e.message))?;
+    let plan = match parse_action_plan(&input_str) {
+        Ok(p) => p,
+        Err(err) => {
+            let _ = write_request_error(&mut stream, "unknown", &format!("parse failed: {err}")).await;
+            return Ok(());
+        }
+    };
+
+    if let Err(err) = validate_action_plan(&plan) {
+        let _ = write_request_error(
+            &mut stream,
+            &plan.request_id,
+            &format!("validation failed: {}", err.message),
+        )
+        .await;
+        return Ok(());
+    }
 
     if plan.mode != Mode::Execute {
-        return Err(anyhow::anyhow!("only mode=execute is accepted by the daemon"));
+        let _ = write_request_error(&mut stream, &plan.request_id, "invalid mode").await;
+        return Ok(());
     }
 
     let confirmation_token = plan.confirmation.as_ref().map(|c| c.token.as_str());
@@ -320,6 +336,77 @@ mod tests {
         stream.read_to_end(&mut out).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(v["error"], "request exceeds max bytes");
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_returns_json_error_for_invalid_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(b"{ not json").await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert!(response.error.as_deref().unwrap_or("").contains("parse failed"));
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_returns_json_error_for_validation_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"   ",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"exec","argv":["/bin/echo","hi"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert!(response
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("validation failed"));
 
         server.abort();
     }

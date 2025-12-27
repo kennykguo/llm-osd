@@ -47,4 +47,7 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 - request size limit:
   - daemon rejects requests larger than 64kiB with a deterministic json error response
 
+- deterministic request errors:
+  - daemon returns json errors for parse, validation, and mode failures instead of dropping the connection
+
 
