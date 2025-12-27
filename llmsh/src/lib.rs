@@ -70,6 +70,22 @@ pub fn parse_and_validate_for_send(input: &str) -> anyhow::Result<ActionPlan> {
     Ok(plan)
 }
 
+pub fn parse_and_validate_for_send_with_overrides(
+    input: &str,
+    request_id: Option<&str>,
+    session_id: Option<&str>,
+) -> anyhow::Result<ActionPlan> {
+    let plan = parse_action_plan(input)?;
+    let plan = apply_overrides(plan, request_id, session_id)?;
+    validate_action_plan(&plan).map_err(|e| anyhow::anyhow!(e.message))?;
+
+    if plan.mode != Mode::Execute {
+        return Err(anyhow::anyhow!("client refuses non-execute mode"));
+    }
+
+    Ok(plan)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +158,19 @@ mod tests {
         let plan = parse_and_validate(input).unwrap();
         let updated = apply_overrides(plan, None, Some("sess-1")).unwrap();
         assert_eq!(updated.session_id.as_deref(), Some("sess-1"));
+    }
+
+    #[test]
+    fn send_with_overrides_allows_blank_request_id() {
+        let input = r#"{
+          "request_id":"   ",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[]
+        }"#;
+
+        let plan = parse_and_validate_for_send_with_overrides(input, Some("req-1"), None).unwrap();
+        assert_eq!(plan.request_id, "req-1");
     }
 }
 

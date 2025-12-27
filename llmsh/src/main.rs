@@ -5,7 +5,10 @@ use clap::{Parser, Subcommand};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
-use llmsh::{apply_overrides, parse_and_validate_for_send, validate_verdict};
+use llmsh::{
+    apply_overrides, parse_and_validate_for_send, parse_and_validate_for_send_with_overrides,
+    validate_verdict,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "llmsh")]
@@ -64,8 +67,11 @@ async fn main() -> anyhow::Result<()> {
             json,
         } => {
             let input = read_input(file.as_deref(), json.as_deref()).await?;
-            let plan = parse_and_validate_for_send(&input)?;
-            let plan = apply_overrides(plan, request_id.as_deref(), session_id.as_deref())?;
+            let plan = parse_and_validate_for_send_with_overrides(
+                &input,
+                request_id.as_deref(),
+                session_id.as_deref(),
+            )?;
             let canonical = serde_json::to_string(&plan)?;
             let response = send(&socket_path, &canonical).await?;
             print!("{response}");
