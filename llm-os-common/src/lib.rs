@@ -176,6 +176,10 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
     const MAX_EXEC_ENV_ENTRIES: usize = 32;
     const MAX_EXEC_ENV_KEY_BYTES: usize = 128;
     const MAX_EXEC_ENV_VALUE_BYTES: usize = 2048;
+    const MAX_REQUEST_ID_BYTES: usize = 128;
+    const MAX_SESSION_ID_BYTES: usize = 128;
+    const MAX_REASON_BYTES: usize = 2048;
+    const MAX_PATH_BYTES: usize = 4096;
 
     if plan.actions.len() > MAX_ACTIONS {
         return Err(ValidationError {
@@ -188,11 +192,21 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
             message: "request_id must be non-empty".to_string(),
         });
     }
+    if plan.request_id.as_bytes().len() > MAX_REQUEST_ID_BYTES {
+        return Err(ValidationError {
+            message: "request_id is too long".to_string(),
+        });
+    }
 
     if let Some(session_id) = &plan.session_id {
         if session_id.trim().is_empty() {
             return Err(ValidationError {
                 message: "session_id must be non-empty when provided".to_string(),
+            });
+        }
+        if session_id.as_bytes().len() > MAX_SESSION_ID_BYTES {
+            return Err(ValidationError {
+                message: "session_id is too long".to_string(),
             });
         }
     }
@@ -266,6 +280,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "exec.reason must be non-empty".to_string(),
                     });
                 }
+                if exec.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "reason is too long".to_string(),
+                    });
+                }
 
                 if exec.danger.is_some() {
                     require_confirmation(plan, "exec requires confirmation when danger is set")?;
@@ -275,6 +294,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if read.path.trim().is_empty() {
                     return Err(ValidationError {
                         message: "read_file.path must be non-empty".to_string(),
+                    });
+                }
+                if read.path.as_bytes().len() > MAX_PATH_BYTES {
+                    return Err(ValidationError {
+                        message: "path is too long".to_string(),
                     });
                 }
                 if read.max_bytes == 0 {
@@ -292,6 +316,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                         message: "read_file.reason must be non-empty".to_string(),
                     });
                 }
+                if read.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "reason is too long".to_string(),
+                    });
+                }
 
                 if read.danger.is_some() {
                     require_confirmation(plan, "read_file requires confirmation when danger is set")?;
@@ -301,6 +330,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if write.path.trim().is_empty() {
                     return Err(ValidationError {
                         message: "write_file.path must be non-empty".to_string(),
+                    });
+                }
+                if write.path.as_bytes().len() > MAX_PATH_BYTES {
+                    return Err(ValidationError {
+                        message: "path is too long".to_string(),
                     });
                 }
                 if write.content.as_bytes().len() > MAX_WRITE_FILE_BYTES {
@@ -316,6 +350,11 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if write.reason.trim().is_empty() {
                     return Err(ValidationError {
                         message: "write_file.reason must be non-empty".to_string(),
+                    });
+                }
+                if write.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "reason is too long".to_string(),
                     });
                 }
 
@@ -644,6 +683,77 @@ mod tests {
 
         let err = validate_action_plan(&plan).unwrap_err();
         assert_eq!(err.message, "exec.env value is too long");
+    }
+
+    #[test]
+    fn validate_rejects_request_id_too_long() {
+        let plan = ActionPlan {
+            request_id: "a".repeat(129),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Ping],
+            confirmation: None,
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "request_id is too long");
+    }
+
+    #[test]
+    fn validate_rejects_session_id_too_long() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: Some("a".repeat(129)),
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Ping],
+            confirmation: None,
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "session_id is too long");
+    }
+
+    #[test]
+    fn validate_rejects_reason_too_long() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::Exec(ExecAction {
+                argv: vec!["/bin/echo".to_string(), "hi".to_string()],
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: false,
+                reason: "a".repeat(2049),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "reason is too long");
+    }
+
+    #[test]
+    fn validate_rejects_path_too_long() {
+        let plan = ActionPlan {
+            request_id: "req-1".to_string(),
+            session_id: None,
+            version: "0.1".to_string(),
+            mode: Mode::Execute,
+            actions: vec![Action::ReadFile(ReadFileAction {
+                path: "a".repeat(4097),
+                max_bytes: 1,
+                reason: "test".to_string(),
+                danger: None,
+                recovery: None,
+            })],
+            confirmation: None,
+        };
+        let err = validate_action_plan(&plan).unwrap_err();
+        assert_eq!(err.message, "path is too long");
     }
 }
 

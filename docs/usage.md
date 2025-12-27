@@ -53,6 +53,7 @@ notes:
 - `exec.as_root` is rejected by validation in the mvp
 - validator caps number of actions per plan and exec argv sizes
 - validator caps exec env sizes
+- validator caps request_id/session_id/reason/path sizes
 
 ## confirmation token
 
