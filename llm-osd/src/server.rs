@@ -293,6 +293,14 @@ async fn execute_action(
                 message: "remove_packages is not supported in execute mode".to_string(),
             }),
         }),
+        Action::UpdateSystem(_upd) => ActionResult::UpdateSystem(llm_os_common::UpdateSystemResult {
+            ok: false,
+            argv: vec![],
+            error: Some(llm_os_common::ActionError {
+                code: llm_os_common::ActionErrorCode::PolicyDenied,
+                message: "update_system is not supported in execute mode".to_string(),
+            }),
+        }),
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
 }
@@ -486,6 +494,30 @@ async fn plan_action(action: &Action, confirmation_token: Option<&str>, confirm_
                 argv,
                 error: None,
             })
+        }
+        Action::UpdateSystem(upd) => {
+            match upd.manager {
+                llm_os_common::PackageManager::Apt => ActionResult::UpdateSystem(llm_os_common::UpdateSystemResult {
+                    ok: true,
+                    argv: vec![
+                        "apt-get".to_string(),
+                        "update".to_string(),
+                        "&&".to_string(),
+                        "apt-get".to_string(),
+                        "upgrade".to_string(),
+                        "-y".to_string(),
+                    ],
+                    error: None,
+                }),
+                _ => ActionResult::UpdateSystem(llm_os_common::UpdateSystemResult {
+                    ok: false,
+                    argv: vec![],
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::PolicyDenied,
+                        message: "update_system manager not supported".to_string(),
+                    }),
+                }),
+            }
         }
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
@@ -810,6 +842,57 @@ mod tests {
             ActionResult::RemovePackages(r) => {
                 assert!(r.ok);
                 assert_eq!(r.argv, vec!["apt-get", "remove", "-y", "curl", "git"]);
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_plan_only_update_system_returns_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-plan-only-upd-1",
+          "version":"0.1",
+          "mode":"plan_only",
+          "actions":[{"type":"update_system","manager":"apt","reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-plan-only-upd-1");
+        assert!(response.error.is_none());
+        assert!(!response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::UpdateSystem(r) => {
+                assert!(r.ok);
+                assert_eq!(
+                    r.argv,
+                    vec!["apt-get", "update", "&&", "apt-get", "upgrade", "-y"]
+                );
             }
             _ => panic!("unexpected action result type"),
         }

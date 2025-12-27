@@ -58,7 +58,17 @@ pub enum Action {
     ServiceControl(ServiceControlAction),
     InstallPackages(InstallPackagesAction),
     RemovePackages(RemovePackagesAction),
+    UpdateSystem(UpdateSystemAction),
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSystemAction {
+    pub manager: PackageManager,
+    pub reason: String,
+    pub danger: Option<String>,
+    pub recovery: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -183,7 +193,16 @@ pub enum ActionResult {
     ServiceControl(ServiceControlResult),
     InstallPackages(InstallPackagesResult),
     RemovePackages(RemovePackagesResult),
+    UpdateSystem(UpdateSystemResult),
     Pong(PongResult),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSystemResult {
+    pub ok: bool,
+    pub argv: Vec<String>,
+    pub error: Option<ActionError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -613,6 +632,18 @@ pub fn validate_action_plan(plan: &ActionPlan) -> Result<(), ValidationError> {
                 if pkgs.reason.as_bytes().len() > MAX_REASON_BYTES {
                     return Err(ValidationError {
                         message: "remove_packages.reason is too long".to_string(),
+                    });
+                }
+            }
+            Action::UpdateSystem(upd) => {
+                if upd.reason.trim().is_empty() {
+                    return Err(ValidationError {
+                        message: "update_system.reason must be non-empty".to_string(),
+                    });
+                }
+                if upd.reason.as_bytes().len() > MAX_REASON_BYTES {
+                    return Err(ValidationError {
+                        message: "update_system.reason is too long".to_string(),
                     });
                 }
             }

@@ -51,6 +51,14 @@ this returns `executed=false` and a structured result describing what would run.
 echo '{"request_id":"req-plan-rmpkg-1","version":"0.1","mode":"plan_only","actions":[{"type":"remove_packages","manager":"apt","packages":["curl","git"],"reason":"remove tools","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
 ```
 
+## update_system (plan_only)
+
+this returns `executed=false` and a structured result describing what would run.
+
+```bash
+echo '{"request_id":"req-plan-upd-1","version":"0.1","mode":"plan_only","actions":[{"type":"update_system","manager":"apt","reason":"upgrade system packages","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
 ## send a plan from stdin
 
 ```bash

@@ -312,6 +312,40 @@
         {
           "type": "object",
           "required": [
+            "manager",
+            "reason",
+            "type"
+          ],
+          "properties": {
+            "danger": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "manager": {
+              "$ref": "#/definitions/PackageManager"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "update_system"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "type"
           ],
           "properties": {
