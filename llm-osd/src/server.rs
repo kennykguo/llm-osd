@@ -173,6 +173,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn server_exec_non_allowlisted_requires_confirmation() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server = tokio::spawn(async move { run(&socket_path_str, &audit_path_str).await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan_without = r#"{
+          "request_id":"req-true-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"exec","argv":["/usr/bin/true"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_without.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+
+        match &response.results[0] {
+            ActionResult::Exec(exec) => {
+                assert!(!exec.ok);
+                assert!(exec
+                    .error
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("confirmation required"));
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        let plan_with = format!(
+            r#"{{
+              "request_id":"req-true-2",
+              "version":"0.1",
+              "mode":"execute",
+              "actions":[{{"type":"exec","argv":["/usr/bin/true"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}}],
+              "confirmation":{{"token":"{}"}}
+            }}"#,
+            policy::confirmation_token_hint()
+        );
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_with.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+
+        match &response.results[0] {
+            ActionResult::Exec(exec) => assert!(exec.ok),
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn server_exec_rm_requires_confirmation() {
         let dir = tempfile::tempdir().unwrap();
         let socket_path = dir.path().join("llm-osd.sock");

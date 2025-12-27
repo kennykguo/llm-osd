@@ -5,6 +5,13 @@ use llm_os_common::ExecAction;
 
 const CONFIRM_TOKEN: &str = "i-understand";
 
+fn exec_allowed_without_confirmation(program: &str) -> bool {
+    match program {
+        "/bin/echo" | "echo" => true,
+        _ => false,
+    }
+}
+
 pub fn is_exec_denied(exec: &ExecAction) -> bool {
     let program = match exec.argv.first() {
         Some(p) => p.as_str(),
@@ -28,7 +35,7 @@ pub fn exec_requires_confirmation(exec: &ExecAction) -> bool {
 
     match program {
         "/bin/rm" | "rm" => true,
-        _ => false,
+        _ => !exec_allowed_without_confirmation(program),
     }
 }
 

@@ -25,6 +25,8 @@ recommendation: linux control-plane for mvp, keep xv6 path for kernel experiment
 
 an action plan is a single json document:
 
+- `request_id`: required identifier for correlation
+- `session_id`: optional identifier for correlation
 - `version`: protocol version string
 - `mode`: `plan_only` or `execute`
 - `actions`: ordered list of actions
@@ -34,6 +36,7 @@ an action plan is a single json document:
 - schema parsing uses `deny_unknown_fields` everywhere
 - per-action validators enforce required fields and bounds
 - the executor enforces an allowlist and explicit confirmation policies for dangerous actions
+- exec is allowlisted by default; non-allowlisted programs require confirmation
 
 ### results
 

@@ -40,4 +40,8 @@ build a deterministic, auditable interface between a human, an llm, and the os e
 - audit log hardening:
   - include `request_id` and `session_id` as top-level fields in each jsonl record for easy grepping
 
+- exec allowlist:
+  - only allowlisted programs run without confirmation (mvp: `/bin/echo`)
+  - everything else requires `confirmation.token`
+
 
