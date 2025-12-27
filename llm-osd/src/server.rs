@@ -17,6 +17,10 @@ use crate::audit;
 use crate::policy;
 
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
+#[cfg(test)]
+const READ_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(50);
+#[cfg(not(test))]
+const READ_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub async fn run(socket_path: &str, audit_path: &str, confirm_token: &str) -> anyhow::Result<()> {
     if Path::new(socket_path).exists() {
@@ -43,8 +47,15 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str, confirm_token: 
     let mut input = Vec::new();
     let mut buf = [0u8; 4096];
     let mut exceeded = false;
+    let mut idle = false;
     loop {
-        let n = stream.read(&mut buf).await?;
+        let n = match tokio::time::timeout(READ_IDLE_TIMEOUT, stream.read(&mut buf)).await {
+            Ok(res) => res?,
+            Err(_) => {
+                idle = true;
+                break;
+            }
+        };
         if n == 0 {
             break;
         }
@@ -64,6 +75,17 @@ async fn handle_client(mut stream: UnixStream, audit_path: &str, confirm_token: 
             "unknown",
             ErrorCode::RequestTooLarge,
             "request exceeds max bytes",
+        )
+        .await;
+        return Ok(());
+    }
+
+    if idle {
+        let _ = write_request_error(
+            &mut stream,
+            "unknown",
+            ErrorCode::ParseFailed,
+            "read timed out",
         )
         .await;
         return Ok(());
@@ -307,6 +329,45 @@ mod tests {
             ActionResult::Pong(p) => assert!(p.ok),
             _ => panic!("unexpected action result type"),
         }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_returns_parse_failed_for_incomplete_json_without_close() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream
+            .write_all(b"{\"request_id\":\"req-timeout-1\"")
+            .await
+            .unwrap();
+
+        let mut out = Vec::new();
+        tokio::time::timeout(std::time::Duration::from_secs(2), stream.read_to_end(&mut out))
+            .await
+            .unwrap()
+            .unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            response.error.as_ref().unwrap().code,
+            llm_os_common::ErrorCode::ParseFailed
+        );
 
         server.abort();
     }
