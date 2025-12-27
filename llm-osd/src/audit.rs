@@ -10,7 +10,7 @@ struct AuditRecord<'a> {
     ts_unix_ms: u64,
     request_id: &'a str,
     session_id: Option<&'a str>,
-    plan: &'a ActionPlan,
+    plan: serde_json::Value,
     result: &'a ActionPlanResult,
 }
 
@@ -20,11 +20,13 @@ pub async fn append_record(
     plan: &ActionPlan,
     result: &ActionPlanResult,
 ) -> anyhow::Result<()> {
+    let redacted_plan = redact_plan(plan)?;
+
     let record = AuditRecord {
         ts_unix_ms,
         request_id: plan.request_id.as_str(),
         session_id: plan.session_id.as_deref(),
-        plan,
+        plan: redacted_plan,
         result,
     };
 
@@ -42,6 +44,50 @@ pub async fn append_record(
     file.write_all(&line).await?;
     file.flush().await?;
     Ok(())
+}
+
+fn redact_plan(plan: &ActionPlan) -> anyhow::Result<serde_json::Value> {
+    let mut v = serde_json::to_value(plan)?;
+
+    if let Some(obj) = v.as_object_mut() {
+        if let Some(conf) = obj.get_mut("confirmation") {
+            if let Some(conf_obj) = conf.as_object_mut() {
+                if conf_obj.contains_key("token") {
+                    conf_obj.insert("token".to_string(), serde_json::Value::String("[redacted]".to_string()));
+                }
+            }
+        }
+        if let Some(actions) = obj.get_mut("actions") {
+            if let Some(arr) = actions.as_array_mut() {
+                for action in arr {
+                    if let Some(action_obj) = action.as_object_mut() {
+                        match action_obj.get("type").and_then(|t| t.as_str()) {
+                            Some("write_file") => {
+                                if action_obj.contains_key("content") {
+                                    action_obj.insert(
+                                        "content".to_string(),
+                                        serde_json::Value::String("[redacted]".to_string()),
+                                    );
+                                }
+                            }
+                            Some("exec") => {
+                                if let Some(env) = action_obj.get_mut("env") {
+                                    if let Some(env_obj) = env.as_object_mut() {
+                                        for (_, v) in env_obj.iter_mut() {
+                                            *v = serde_json::Value::String("[redacted]".to_string());
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(v)
 }
 
 

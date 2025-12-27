@@ -73,6 +73,10 @@ every request/action is logged with:
 - argv/cwd/env diffs
 - before/after when applicable (mvp: limited to what we can capture cheaply)
 
+notes:
+
+- audit redacts confirmation tokens, exec env values, and write_file content
+
 ## code structure for extensibility
 
 ### `llm-os-common`

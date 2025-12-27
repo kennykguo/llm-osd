@@ -207,10 +207,7 @@ async fn execute_action(
                     stderr_truncated: false,
                     error: Some(llm_os_common::ActionError {
                         code: llm_os_common::ActionErrorCode::ConfirmationRequired,
-                        message: format!(
-                            "confirmation required (token: {})",
-                            policy::confirmation_token_hint(confirm_token)
-                        ),
+                        message: "confirmation required".to_string(),
                     }),
                 });
             }
@@ -633,6 +630,17 @@ mod tests {
             ActionResult::Exec(exec) => assert!(exec.ok),
             _ => panic!("unexpected action result type"),
         }
+
+        for _ in 0..50u32 {
+            if let Ok(meta) = tokio::fs::metadata(&audit_path).await {
+                if meta.len() > 0 {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let audit_text = tokio::fs::read_to_string(&audit_path).await.unwrap();
+        assert!(!audit_text.contains("i-understand"));
 
         assert!(!file_path.exists());
 
