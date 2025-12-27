@@ -21,7 +21,7 @@ cargo run -p llm-osd -- --socket-path /tmp/llm-osd.sock --audit-path ./llm-osd-a
 in another terminal:
 
 ```bash
-cargo run -p llmsh -- ping --socket-path /tmp/llm-osd.sock
+cargo run -p llmsh -- ping --socket-path /tmp/llm-osd.sock --session-id sess-1
 ```
 
 the response is json and includes `request_id`, `results`, and optional `error`.
@@ -30,6 +30,12 @@ the response is json and includes `request_id`, `results`, and optional `error`.
 
 ```bash
 echo '{"request_id":"req-echo-1","version":"0.1","mode":"execute","actions":[{"type":"exec","argv":["/bin/echo","hi"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
+```
+
+you can also override correlation fields without editing the json:
+
+```bash
+echo '{"request_id":"req-echo-1","version":"0.1","mode":"execute","actions":[{"type":"exec","argv":["/bin/echo","hi"],"cwd":null,"env":null,"timeout_sec":5,"as_root":false,"reason":"test","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock --session-id sess-1
 ```
 
 ## local validation (no daemon)

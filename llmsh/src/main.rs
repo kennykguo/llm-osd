@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
-use llmsh::{parse_and_validate_for_send, validate_verdict};
+use llmsh::{apply_overrides, parse_and_validate_for_send, validate_verdict};
 
 #[derive(Debug, Parser)]
 #[command(name = "llmsh")]
@@ -21,6 +21,12 @@ enum Command {
         socket_path: String,
 
         #[arg(long)]
+        request_id: Option<String>,
+
+        #[arg(long)]
+        session_id: Option<String>,
+
+        #[arg(long)]
         file: Option<String>,
 
         #[arg(long)]
@@ -29,6 +35,12 @@ enum Command {
     Ping {
         #[arg(long, default_value = "/tmp/llm-osd.sock")]
         socket_path: String,
+
+        #[arg(long, default_value = "req-ping-cli-1")]
+        request_id: String,
+
+        #[arg(long)]
+        session_id: Option<String>,
     },
     Validate {
         #[arg(long)]
@@ -46,23 +58,36 @@ async fn main() -> anyhow::Result<()> {
     match args.command {
         Command::Send {
             socket_path,
+            request_id,
+            session_id,
             file,
             json,
         } => {
             let input = read_input(file.as_deref(), json.as_deref()).await?;
-            let _ = parse_and_validate_for_send(&input)?;
-            let response = send(&socket_path, &input).await?;
+            let plan = parse_and_validate_for_send(&input)?;
+            let plan = apply_overrides(plan, request_id.as_deref(), session_id.as_deref())?;
+            let canonical = serde_json::to_string(&plan)?;
+            let response = send(&socket_path, &canonical).await?;
             print!("{response}");
         }
-        Command::Ping { socket_path } => {
-            let plan = r#"{
-  "request_id":"req-ping-cli-1",
+        Command::Ping {
+            socket_path,
+            request_id,
+            session_id,
+        } => {
+            let input = format!(
+                r#"{{
+  "request_id":"{}",
   "version":"0.1",
   "mode":"execute",
-  "actions":[{"type":"ping"}]
-}"#;
-            let _ = parse_and_validate_for_send(plan)?;
-            let response = send(&socket_path, plan).await?;
+  "actions":[{{"type":"ping"}}]
+}}"#,
+                request_id
+            );
+            let plan = parse_and_validate_for_send(&input)?;
+            let plan = apply_overrides(plan, Some(&request_id), session_id.as_deref())?;
+            let canonical = serde_json::to_string(&plan)?;
+            let response = send(&socket_path, &canonical).await?;
             print!("{response}");
         }
         Command::Validate { file, json } => {

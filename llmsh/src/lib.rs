@@ -3,6 +3,28 @@
 
 use llm_os_common::{parse_action_plan, validate_action_plan, ActionPlan, ErrorCode, Mode, RequestError};
 
+pub fn apply_overrides(
+    mut plan: ActionPlan,
+    request_id: Option<&str>,
+    session_id: Option<&str>,
+) -> anyhow::Result<ActionPlan> {
+    if let Some(request_id) = request_id {
+        if request_id.trim().is_empty() {
+            return Err(anyhow::anyhow!("request_id override must be non-empty"));
+        }
+        plan.request_id = request_id.to_string();
+    }
+
+    if let Some(session_id) = session_id {
+        if session_id.trim().is_empty() {
+            return Err(anyhow::anyhow!("session_id override must be non-empty"));
+        }
+        plan.session_id = Some(session_id.to_string());
+    }
+
+    Ok(plan)
+}
+
 pub fn parse_and_validate(input: &str) -> anyhow::Result<ActionPlan> {
     let plan = parse_action_plan(input)?;
     validate_action_plan(&plan).map_err(|e| anyhow::anyhow!(e.message))?;
@@ -107,6 +129,19 @@ mod tests {
             v.error.as_ref().unwrap().code,
             ErrorCode::ValidationFailed
         );
+    }
+
+    #[test]
+    fn apply_overrides_sets_session_id() {
+        let input = r#"{
+          "request_id":"req-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[]
+        }"#;
+        let plan = parse_and_validate(input).unwrap();
+        let updated = apply_overrides(plan, None, Some("sess-1")).unwrap();
+        assert_eq!(updated.session_id.as_deref(), Some("sess-1"));
     }
 }
 
