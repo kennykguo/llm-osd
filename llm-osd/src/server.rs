@@ -213,8 +213,37 @@ async fn execute_action(
             }
             actions::exec::run(exec).await
         }
-        Action::ReadFile(read) => actions::files::read(read).await,
-        Action::WriteFile(write) => actions::files::write(write).await,
+        Action::ReadFile(read) => {
+            if policy::path_requires_confirmation(&read.path)
+                && !policy::confirmation_is_valid(confirmation_token, confirm_token)
+            {
+                return ActionResult::ReadFile(llm_os_common::ReadFileResult {
+                    ok: false,
+                    content_base64: None,
+                    truncated: false,
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::ConfirmationRequired,
+                        message: "confirmation required".to_string(),
+                    }),
+                });
+            }
+            actions::files::read(read).await
+        }
+        Action::WriteFile(write) => {
+            if policy::path_requires_confirmation(&write.path)
+                && !policy::confirmation_is_valid(confirmation_token, confirm_token)
+            {
+                return ActionResult::WriteFile(llm_os_common::WriteFileResult {
+                    ok: false,
+                    artifacts: vec![],
+                    error: Some(llm_os_common::ActionError {
+                        code: llm_os_common::ActionErrorCode::ConfirmationRequired,
+                        message: "confirmation required".to_string(),
+                    }),
+                });
+            }
+            actions::files::write(write).await
+        }
         Action::Ping => ActionResult::Pong(llm_os_common::PongResult { ok: true }),
     }
 }
@@ -766,6 +795,76 @@ mod tests {
         }
         let audit_text = tokio::fs::read_to_string(&audit_path).await.unwrap();
         assert!(!audit_text.contains(secret));
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_read_file_absolute_path_requires_confirmation() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan_without = r#"{
+          "request_id":"req-abs-read-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"read_file","path":"/etc/passwd","max_bytes":256,"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_without.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        match &response.results[0] {
+            ActionResult::ReadFile(r) => {
+                assert!(!r.ok);
+                assert_eq!(
+                    r.error.as_ref().unwrap().code,
+                    llm_os_common::ActionErrorCode::ConfirmationRequired
+                );
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        let plan_with = r#"{
+          "request_id":"req-abs-read-2",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"read_file","path":"/etc/passwd","max_bytes":256,"reason":"test","danger":null,"recovery":null}],
+          "confirmation":{"token":"i-understand"}
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan_with.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        match &response.results[0] {
+            ActionResult::ReadFile(r) => {
+                assert!(r.ok);
+                assert!(r.content_base64.is_some());
+            }
+            _ => panic!("unexpected action result type"),
+        }
 
         server.abort();
     }

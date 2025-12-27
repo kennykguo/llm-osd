@@ -37,6 +37,10 @@ pub fn exec_requires_confirmation(exec: &ExecAction) -> bool {
     }
 }
 
+pub fn path_requires_confirmation(path: &str) -> bool {
+    path.starts_with('/') && !path.starts_with("/tmp/")
+}
+
 pub fn confirmation_is_valid(token: Option<&str>, expected_token: &str) -> bool {
     match token {
         Some(t) => t.trim() == expected_token,

@@ -71,12 +71,17 @@ the daemon returns `content_base64` and `truncated`.
 notes:
 
 - the daemon only reads up to `max_bytes` (plus one extra byte to detect truncation), so `read_file` does not load large files into memory.
+- absolute paths outside `/tmp/` require a confirmation token.
 
 ## write a file
 
 ```bash
 echo '{"request_id":"req-write-1","version":"0.1","mode":"execute","actions":[{"type":"write_file","path":"./tmp-llm-osd-write.txt","content":"hello\\n","mode":"0644","reason":"test","danger":null,"recovery":null}]}' | cargo run -p llmsh -- send --socket-path /tmp/llm-osd.sock
 ```
+
+notes:
+
+- absolute paths outside `/tmp/` require a confirmation token.
 
 ## audit log
 

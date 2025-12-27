@@ -40,6 +40,7 @@ an action plan is a single json document:
 - exec is allowlisted by default; non-allowlisted programs require confirmation
 - exec.as_root is rejected by validation in the mvp
 - daemon uses an idle read timeout so it does not rely on client EOF to complete a request
+- read_file/write_file for absolute paths outside `/tmp/` require confirmation
 
 ### results
 
