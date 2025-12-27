@@ -2,11 +2,10 @@
 // ABOUTME: prints deterministic json responses returned by the daemon.
 
 use clap::{Parser, Subcommand};
-use llm_os_common::{ErrorCode, RequestError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
-use llmsh::{parse_and_validate, parse_and_validate_for_send};
+use llmsh::{parse_and_validate_for_send, validate_verdict};
 
 #[derive(Debug, Parser)]
 #[command(name = "llmsh")]
@@ -68,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Validate { file, json } => {
             let input = read_input(file.as_deref(), json.as_deref()).await?;
-            let verdict = validate_local(&input);
+            let verdict = validate_verdict(&input);
             print!("{}", serde_json::to_string_pretty(&verdict)?);
         }
     }
@@ -100,30 +99,3 @@ async fn send(socket_path: &str, input: &str) -> anyhow::Result<String> {
     Ok(response)
 }
 
-#[derive(Debug, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-struct ValidateVerdict {
-    ok: bool,
-    error: Option<RequestError>,
-}
-
-fn validate_local(input: &str) -> ValidateVerdict {
-    match parse_and_validate(input) {
-        Ok(_) => ValidateVerdict {
-            ok: true,
-            error: None,
-        },
-        Err(err) => {
-            let msg = err.to_string();
-            let code = if msg.contains("unknown field") {
-                ErrorCode::ParseFailed
-            } else {
-                ErrorCode::ValidationFailed
-            };
-            ValidateVerdict {
-                ok: false,
-                error: Some(RequestError { code, message: msg }),
-            }
-        }
-    }
-}
