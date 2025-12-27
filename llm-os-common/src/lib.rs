@@ -275,6 +275,11 @@ pub struct CgroupApplyResult {
 pub struct ObserveResult {
     pub ok: bool,
     pub argv: Vec<String>,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stdout_truncated: bool,
+    pub stderr: String,
+    pub stderr_truncated: bool,
     pub error: Option<ActionError>,
 }
 

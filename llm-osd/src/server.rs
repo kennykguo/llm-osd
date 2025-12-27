@@ -301,14 +301,59 @@ async fn execute_action(
                 message: "update_system is not supported in execute mode".to_string(),
             }),
         }),
-        Action::Observe(_obs) => ActionResult::Observe(llm_os_common::ObserveResult {
-            ok: false,
-            argv: vec![],
-            error: Some(llm_os_common::ActionError {
-                code: llm_os_common::ActionErrorCode::PolicyDenied,
-                message: "observe is not supported in execute mode".to_string(),
-            }),
-        }),
+        Action::Observe(obs) => {
+            let base = match obs.tool {
+                llm_os_common::ObserveTool::Ps => "ps",
+                llm_os_common::ObserveTool::Top => "top",
+                llm_os_common::ObserveTool::Journalctl => "journalctl",
+                llm_os_common::ObserveTool::Perf => "perf",
+                llm_os_common::ObserveTool::Bpftrace => "bpftrace",
+                llm_os_common::ObserveTool::Other => {
+                    return ActionResult::Observe(llm_os_common::ObserveResult {
+                        ok: false,
+                        argv: vec![],
+                        exit_code: None,
+                        stdout: "".to_string(),
+                        stdout_truncated: false,
+                        stderr: "".to_string(),
+                        stderr_truncated: false,
+                        error: Some(llm_os_common::ActionError {
+                            code: llm_os_common::ActionErrorCode::PolicyDenied,
+                            message: "observe tool not supported".to_string(),
+                        }),
+                    });
+                }
+            };
+
+            let mut argv = Vec::new();
+            argv.push(base.to_string());
+            argv.extend(obs.args.iter().cloned());
+
+            let exec = llm_os_common::ExecAction {
+                argv: argv.clone(),
+                cwd: None,
+                env: None,
+                timeout_sec: 5,
+                as_root: false,
+                reason: obs.reason.clone(),
+                danger: obs.danger.clone(),
+                recovery: obs.recovery.clone(),
+            };
+
+            match actions::exec::run(&exec).await {
+                ActionResult::Exec(r) => ActionResult::Observe(llm_os_common::ObserveResult {
+                    ok: r.ok,
+                    argv,
+                    exit_code: r.exit_code,
+                    stdout: r.stdout,
+                    stdout_truncated: r.stdout_truncated,
+                    stderr: r.stderr,
+                    stderr_truncated: r.stderr_truncated,
+                    error: r.error,
+                }),
+                other => other,
+            }
+        }
         Action::CgroupApply(_cg) => ActionResult::CgroupApply(llm_os_common::CgroupApplyResult {
             ok: false,
             argv: vec![],
@@ -554,6 +599,11 @@ async fn plan_action(action: &Action, confirmation_token: Option<&str>, confirm_
                     return ActionResult::Observe(llm_os_common::ObserveResult {
                         ok: false,
                         argv: vec![],
+                        exit_code: None,
+                        stdout: "".to_string(),
+                        stdout_truncated: false,
+                        stderr: "".to_string(),
+                        stderr_truncated: false,
                         error: Some(llm_os_common::ActionError {
                             code: llm_os_common::ActionErrorCode::PolicyDenied,
                             message: "observe tool not supported".to_string(),
@@ -569,6 +619,11 @@ async fn plan_action(action: &Action, confirmation_token: Option<&str>, confirm_
             ActionResult::Observe(llm_os_common::ObserveResult {
                 ok: true,
                 argv,
+                exit_code: None,
+                stdout: "".to_string(),
+                stdout_truncated: false,
+                stderr: "".to_string(),
+                stderr_truncated: false,
                 error: None,
             })
         }
@@ -1060,6 +1115,55 @@ mod tests {
             ActionResult::Observe(r) => {
                 assert!(r.ok);
                 assert_eq!(r.argv, vec!["ps", "aux"]);
+            }
+            _ => panic!("unexpected action result type"),
+        }
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn server_execute_observe_returns_stdout() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("llm-osd.sock");
+        let audit_path = dir.path().join("audit.jsonl");
+
+        let socket_path_str = socket_path.to_string_lossy().to_string();
+        let audit_path_str = audit_path.to_string_lossy().to_string();
+
+        let server =
+            tokio::spawn(async move { run(&socket_path_str, &audit_path_str, "i-understand").await });
+
+        for _ in 0..50u32 {
+            if socket_path.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let plan = r#"{
+          "request_id":"req-exec-obs-1",
+          "version":"0.1",
+          "mode":"execute",
+          "actions":[{"type":"observe","tool":"ps","args":["aux"],"reason":"test","danger":null,"recovery":null}]
+        }"#;
+
+        let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+        stream.write_all(plan.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).await.unwrap();
+        let response: ActionPlanResult = serde_json::from_slice(&out).unwrap();
+        assert_eq!(response.request_id, "req-exec-obs-1");
+        assert!(response.error.is_none());
+        assert!(response.executed);
+        assert_eq!(response.results.len(), 1);
+        match &response.results[0] {
+            ActionResult::Observe(r) => {
+                assert!(r.ok);
+                assert_eq!(r.exit_code, Some(0));
+                assert!(!r.stdout.is_empty());
             }
             _ => panic!("unexpected action result type"),
         }
