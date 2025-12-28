@@ -37,12 +37,7 @@ the generated json schema lives at `docs/actionplan.schema.json`.
 
 ## documentation
 
-key docs:
-
-- `docs/PROMPT.md`: the prompt requirements for the project
-- `docs/SUGGESTIONS.md`: design suggestions and constraints
-- `docs/USAGE.md`: how to run `llm-osd` and use `llmsh`
-- `docs/ERRORS.md`: deterministic error codes
+reference docs live under `docs/internal/`.
 
 ## quick start
 

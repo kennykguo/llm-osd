@@ -8,12 +8,23 @@
 
 ## docs folder conventions
 
-### 1) doc naming
+### 1) docs folder layout
 
-- documentation filenames in `docs/` use uppercase for stable names and snapshot prefixes.
+`docs/` is structured into:
+
+- `docs/internal/`: stable reference docs (schema, usage, prompt, errors, etc.)
+- `docs/summary/`: timestamped historical summaries (what is already done)
+- `docs/task/`: timestamped task snapshots
+- `docs/implementation/`: timestamped implementation snapshots
+
+the newest task + implementation snapshots are the current source of truth.
+
+### 2) doc naming
+
+- documentation filenames use uppercase for stable names and snapshot prefixes.
 - timestamps must be in the filename, not inside the file body.
 
-### 2) snapshot docs (timestamped filenames)
+### 3) snapshot docs (timestamped filenames)
 
 snapshots are point-in-time records. do not include timestamps in the contents.
 
@@ -23,32 +34,32 @@ filename convention:
 
 examples:
 
-- `docs/SUMMARY_2025-12-27T21-28-33-05-00.md`
-- `docs/IMPLEMENTATION_PLAN_2025-12-27T21-28-33-05-00.md`
-- `docs/TASK_2025-12-27T21-28-33-05-00.md`
-- `docs/NEXT_IMPLEMENTATION_PLAN_2025-12-27T21-28-33-05-00.md`
-- `docs/NEXT_TASK_2025-12-27T21-28-33-05-00.md`
+- `docs/summary/SUMMARY_2025-12-27T21-28-33-05-00.md`
+- `docs/task/TASK_2025-12-27T21-27-33-05-00.md`
+- `docs/implementation/IMPLEMENTATION_2025-12-27T21-28-33-05-00.md`
 
-### 3) canonical docs
+### 4) operating rule: always read the latest task + implementation first
 
-the repo keeps these stable, non-timestamped docs:
+before doing any implementation work, always read:
 
-- `docs/PROMPT.md`
-- `docs/SUGGESTIONS.md`
-- `docs/USAGE.md`
-- `docs/ACTIONS.md`
-- `docs/LOG.md`
-- `docs/ERRORS.md`
-- `docs/actionplan.schema.json`
+- the latest `docs/task/TASK_*.md`
+- the latest `docs/implementation/IMPLEMENTATION_*.md`
 
-the implementation plan and task tracking are maintained as timestamped snapshots:
+use older snapshots only for historical context.
 
-- `docs/IMPLEMENTATION_PLAN_*.md`
-- `docs/TASK_*.md`
+### 5) internal docs
 
-when you update those, create a new snapshot file with a fresh timestamp.
+the repo keeps stable, non-timestamped docs in `docs/internal/` (examples):
 
-### 4) duplicate cleanup
+- `docs/internal/PROMPT.md`
+- `docs/internal/SUGGESTIONS.md`
+- `docs/internal/USAGE.md`
+- `docs/internal/ACTIONS.md`
+- `docs/internal/LOG.md`
+- `docs/internal/ERRORS.md`
+- `docs/internal/actionplan.schema.json`
+
+### 6) duplicate cleanup
 
 if duplicate files exist (often due to case-only differences), resolve them by:
 
