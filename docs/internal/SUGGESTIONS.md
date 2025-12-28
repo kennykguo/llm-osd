@@ -290,3 +290,6 @@ if an action fails, stop and return:
 - only then consider kernel modules / firmware wrappers
 
 this yields a working “llm-os” experience early, without betting the farm on a custom kernel.
+
+
+llms are prone to hallucination. you need to ensure that the interface allows for deterministic interaction between the user, the llm, and/or the os. both llmsh, and llm-osd should be coded in a scalable fashion, in the sense that if i wanted to add new os features for interacting with the monitor, the keyboard, the mouse, etc (any task that aids autonomy), the structure of the code should allow for relatively smooth and easy extension. comments to document code should be in lowercase format. move all documents currently to a folder called /docs. then add your implementation plan to the /docs folder, along with the running task. this should be constantly updated as you progress through the task, or you can just update your internal task and implementation plan state. feel free to also use the Go language, in additon to Rust if you want and think its good for anything. If you have to choose, pick Rust. Only use Go if you think you can use it in tandem with Rust and its better for certain functionalities. let me know if you think you're ready to proceed with coding. 
