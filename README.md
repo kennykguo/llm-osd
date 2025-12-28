@@ -42,12 +42,7 @@ key docs:
 - `docs/PROMPT.md`: the prompt requirements for the project
 - `docs/SUGGESTIONS.md`: design suggestions and constraints
 - `docs/USAGE.md`: how to run `llm-osd` and use `llmsh`
-- `docs/implementation_plan.md`: current implementation plan status
-- `docs/task.md`: running task status
-- `docs/error_codes.md`: deterministic error codes
-- `docs/SUMMARY_2025-12-27T21-28-33-05-00.md`: full codebase walkthrough
-- `docs/NEXT_IMPLEMENTATION_PLAN_2025-12-27T21-28-33-05-00.md`: next implementation plan
-- `docs/NEXT_TASK_2025-12-27T21-28-33-05-00.md`: next task outline
+- `docs/ERRORS.md`: deterministic error codes
 
 ## quick start
 

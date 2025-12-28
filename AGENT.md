@@ -8,19 +8,14 @@
 
 ## docs folder conventions
 
-### 1) canonical docs (living files)
+### 1) doc naming
 
-these files are the current source of truth and should not include timestamps in the contents:
-
-- `docs/implementation_plan.md`
-- `docs/task.md`
-- `docs/USAGE.md`
-
-when you update these, keep them current and consistent with the codebase.
+- documentation filenames in `docs/` use uppercase for stable names and snapshot prefixes.
+- timestamps must be in the filename, not inside the file body.
 
 ### 2) snapshot docs (timestamped filenames)
 
-when you want a point-in-time record, create a snapshot file whose filename includes the timestamp and do not put timestamps inside the file body.
+snapshots are point-in-time records. do not include timestamps in the contents.
 
 filename convention:
 
@@ -29,26 +24,47 @@ filename convention:
 examples:
 
 - `docs/SUMMARY_2025-12-27T21-28-33-05-00.md`
-- `docs/implementation_plan_2025-12-27T21-28-33-05-00.md`
-- `docs/task_2025-12-27T21-28-33-05-00.md`
+- `docs/IMPLEMENTATION_PLAN_2025-12-27T21-28-33-05-00.md`
+- `docs/TASK_2025-12-27T21-28-33-05-00.md`
 - `docs/NEXT_IMPLEMENTATION_PLAN_2025-12-27T21-28-33-05-00.md`
 - `docs/NEXT_TASK_2025-12-27T21-28-33-05-00.md`
 
-### 3) doc naming
+### 3) canonical docs
 
-- prefer uppercase filenames only when intentionally chosen and used consistently (e.g. `USAGE.md`).
-- if a doc is renamed (case changes), update references in other docs to match.
+the repo keeps these stable, non-timestamped docs:
+
+- `docs/PROMPT.md`
+- `docs/SUGGESTIONS.md`
+- `docs/USAGE.md`
+- `docs/ACTIONS.md`
+- `docs/LOG.md`
+- `docs/ERRORS.md`
+- `docs/actionplan.schema.json`
+
+the implementation plan and task tracking are maintained as timestamped snapshots:
+
+- `docs/IMPLEMENTATION_PLAN_*.md`
+- `docs/TASK_*.md`
+
+when you update those, create a new snapshot file with a fresh timestamp.
+
+### 4) duplicate cleanup
+
+if duplicate files exist (often due to case-only differences), resolve them by:
+
+- comparing contents (hash/diff)
+- keeping the uppercase filename variant
+- removing the duplicates
 
 ## README.md conventions
 
 - `README.md` is the stable entry point and should describe the current structure of the repo.
 - avoid embedding timestamps inside `README.md`.
-- keep links to snapshot docs when they are useful for historical context.
 
 ## managing this file (AGENT.md)
 
 - `AGENT.md` is for repo-wide conventions: code style, docs rules, and workflow rules.
 - keep it short and operational.
-- if you change conventions (like timestamp rules), update this file first.
+- update this file first when conventions change.
 
 
